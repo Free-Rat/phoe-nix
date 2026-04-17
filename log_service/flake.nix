@@ -19,14 +19,15 @@
       };
       python312 = pkgs.python312;
       pythonPackages = pkgs.python312Packages;
-      buildPythonPackage = pythonPackages.buildPythonPackage;
+      systemd-python = pythonPackages.systemd-python;
+      python-with-packages = python312.withPackages (ps: [ ps.systemd-python ]);
 
     in
     {
       packages.x86_64-linux.default = pkgs.writeScriptBin "log-service" ''
         #!${pkgs.bash}/bin/bash
-        export PYTHONPATH="${self.outPath}/log_service/src:$PYTHONPATH"
-        exec ${python312}/bin/python -m log_service "$@"
+        export PYTHONPATH="${self.outPath}/src:$PYTHONPATH"
+        exec ${python-with-packages}/bin/python -m log_service "$@"
       '';
 
       devShells.x86_64-linux.default = pkgs.mkShell {

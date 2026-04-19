@@ -62,7 +62,8 @@ The pipeline will:
 
     - Consumes messages asynchronously
     - Detects anomalies / misconfigurations
-    - Uses AI model (via OpenCode API or Azure Cognitive Services)
+    - Uses OpenCode Go API as the AI model provider
+    - The API key is stored in Azure Key Vault and accessed via Managed Identity
 
 4. Decision Agent
 
@@ -93,10 +94,10 @@ The pipeline will:
 Log Upload
 → Azure Blob Storage
 → Log Router (Azure Function)
-→ Service Bus Topic
-→ Analysis Agent
+→ Service Bus Topic `analysis`
+→ Analysis Agent (calls OpenCode Go API)
 → Decision Agent
-→ Service Bus Queue
+→ Service Bus Topic `decision`
 → Local Agent (on node)
 → Cosmos DB
 
@@ -129,10 +130,14 @@ Log Upload
 ## Architecture Decision Record
 
 - We will use NixOS
-- We will use OpenCode Go API as AI model provider (if possible)
-- We will use Azure cloud services (Azure Functions, blob storage, Queue Storage/Service Bus, Cosmos DB)
-- We will use terraform as IaC
-- We will use Python as a main language
+- We will use OpenCode Go API as the AI model provider (not "if possible" – confirmed)
+- The OpenCode Go API key will be stored in Azure Key Vault; Azure Functions access it via Managed Identity
+- We will use Azure cloud services (Azure Functions, Blob Storage, Service Bus, Cosmos DB)
+- We will use a single Service Bus namespace with multiple topics (`analysis`, `decision`) – no Queue Storage is needed
+- Direct connection to Service Bus uses the connection string (Shared Access Policy); prefer Managed Identity where possible
+- We will use Terraform as IaC
+- We will use Python as the main language
+- CI/CD will be delivered by Nix; implementation will be done in a later phase
 
 ## Component to Azure Service Mapping
 
@@ -140,16 +145,24 @@ Log Upload
 | ------------- | --------------------------- |
 | Log Storage   | Blob Storage                |
 | Event Trigger | Azure Functions             |
-| Messaging     | Service Bus (Topic + Queue) |
-| AI Processing | Azure OpenAI / OpenCode API |
+| Messaging     | Service Bus (Topic only)    |
+| AI Processing | OpenCode Go API             |
 | Database      | Cosmos DB                   |
 | Compute       | Azure Functions / AKS       |
+| Secrets       | Azure Key Vault             |
 
 ## To implement
 
 - [ ] Log Service (on node)
 - [ ] Upload Authorization Service (Token Service)
 - [ ] Log Router / Normalizer
-- [ ] Analysis Agent (AI-powered)
+- [ ] Analysis Agent (AI-powered – OpenCode Go API)
 - [ ] Decision Agent (?)
 - [ ] Local Agent (Local Agent on Node)
+
+## TODO
+
+- [ ] Error handling strategy (retry policies, DLQ processing, idempotency, API fallback)
+- [ ] Nix-based CI/CD pipeline (build, test, deploy)
+- [ ] Evaluate if Azure OpenAI fallback is needed
+- [ ] Define alerting rules and dashboards in Application Insights

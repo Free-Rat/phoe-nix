@@ -1,0 +1,17 @@
+# Terraform
+infrastructure/.terraform/
+infrastructure/*.tfstate
+infrastructure/*.tfstate.backup
+infrastructure/.terraform.lock.hcl
+
+# Environment files with secrets
+infrastructure/env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Nix
+result

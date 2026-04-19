@@ -2,7 +2,7 @@
 name = "log_service"
 version = "0.1.0"
 requires-python = ">=3.14"
-dependencies = [ ]
+dependencies = [ "systemd-python" ]
 
 [project.scripts]
 log_service = "log_service.main:main"
@@ -16,4 +16,7 @@ packages = ["src/log_service"]
 
 [tool.hatch.build]
 sources = ["src"]
+
+[tool.uv.extra-build-dependencies]
+systemd-python = ["setuptools"]
 

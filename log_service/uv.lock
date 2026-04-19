@@ -3,6 +3,18 @@ revision = 3
 requires-python = ">=3.14"
 
 [[package]]
-name = "log_service"
+name = "log-service"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "systemd-python" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "systemd-python" }]
+
+[[package]]
+name = "systemd-python"
+version = "235"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/9e/ab4458e00367223bda2dd7ccf0849a72235ee3e29b36dce732685d9b7ad9/systemd-python-235.tar.gz", hash = "sha256:4e57f39797fd5d9e2d22b8806a252d7c0106c936039d1e71c8c6b8008e695c0a", size = 61677, upload-time = "2023-02-11T13:42:16.588Z" }

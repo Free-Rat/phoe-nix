@@ -58,9 +58,14 @@
       buildOverlay = pyproject-build-systems.overlays.wheel;
 
       # 5. Final Python package set
-      pythonSet = pythonBase.overrideScope (
+      pythonSet = (pythonBase.overrideScope (
         final: prev: prev // (overlay final prev) // (buildOverlay final prev)
-      );
+      )).overrideScope (final: prev: {
+        systemd-python = prev.systemd-python.overrideAttrs (old: {
+          nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];
+          buildInputs = (old.buildInputs or []) ++ [ pkgs.systemd ];
+        });
+      });
 
     in
     {
@@ -78,6 +83,8 @@
             git
             python
             uv
+            pkg-config
+            systemd.dev
           ])
           ++ (with pythonPackages; [
             systemd-python

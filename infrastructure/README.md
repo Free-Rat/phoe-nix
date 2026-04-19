@@ -1,6 +1,6 @@
 # Infrastructure Overview
 
-This document describes the Azure resources
+This document describes the Azure resources deployed via Terraform
 
 ## 1. High-level architecture
 
@@ -370,7 +370,57 @@ Example:
 * `kv-project-healer-dev`
 * `func-project-healer-dev`
 
-## 8. Summary
+## 8. Terraform module structure
+
+The infrastructure is split into 4 modules with **separate state files**, enabling safe `terraform destroy` of stateless resources without touching data.
+
+```
+infrastructure/
+├── 01-networking/       # Resource group (foundation)
+├── 02-cosmos/           # Cosmos DB account, database, containers (stateful data)
+├── 03-blob-storage/     # Logs storage account, container, lifecycle policy (stateful data)
+├── 04-stateless/        # Functions, Service Bus, Key Vault, App Insights, RBAC
+├── apply.sh             # terraform init + apply in order
+└── destroy.sh           # terraform init + destroy in reverse order
+```
+
+### Apply order: `01 → 02 → 03 → 04`
+
+Networking first (resource group), then stateful data stores (Cosmos DB, Blob Storage), then stateless compute.
+
+### Destroy order: `04 → 03 → 02 → 01`
+
+Stateless things first (functions, service bus), then data stores, then the resource group last.
+
+### Safe destroy patterns
+
+| What you want to destroy | Command |
+|---|---|
+| Stateless only (functions, service bus, key vault, app insights) | `cd 04-stateless && terraform destroy` |
+| Blob storage (logs data) | `cd 03-blob-storage && terraform destroy` |
+| Cosmos DB (incidents, decisions, execution results) | `cd 02-cosmos && terraform destroy` |
+| Everything | `./destroy.sh` |
+
+### Cross-module references
+
+Each module uses `data` sources to look up resources from prior modules by name:
+
+- `02-cosmos`, `03-blob-storage`, `04-stateless` all reference `data.azurerm_resource_group.main` from `01-networking`
+- `04-stateless` references `data.azurerm_cosmosdb_account.main` and `data.azurerm_cosmosdb_sql_database.main` from `02-cosmos`
+- `04-stateless` references `data.azurerm_storage_account.logs` from `03-blob-storage`
+
+This means prior modules must be applied before later ones, but later modules can be destroyed independently.
+
+### Per-module contents
+
+| Module | Resources |
+|---|---|
+| `01-networking` | Resource group |
+| `02-cosmos` | Cosmos DB account, SQL database (`project-healer`), containers: `node-state`, `incidents`, `decisions`, `execution-results` |
+| `03-blob-storage` | Storage account (`stprojecthealerdev`), container (`logs`), lifecycle policy (cleanup after 30 days) |
+| `04-stateless` | Service Bus namespace + topics + subscriptions, Key Vault + secrets, App Insights, managed identity, app service plan, function storage account, 4 Linux Function Apps (token, router, analysis, decision), 7 RBAC role assignments |
+
+## 9. Summary
 
 This infrastructure supports a fully event-driven distributed system where NixOS nodes can upload logs securely, the cloud pipeline can analyze them asynchronously, and local agents can apply self-healing actions automatically.
 

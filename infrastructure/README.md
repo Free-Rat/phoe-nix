@@ -63,23 +63,20 @@ NixOS Node Local Agent -> Cosmos DB
 
 **Purpose:** Issues temporary upload permissions for nodes.
 
-**Implementation options:**
-
-* Azure Functions
-* Azure Container Apps
-* App Service
+**Implementation:** Azure Function (HTTP trigger, already provisioned as `func-project-healer-dev-token`).
 
 **Responsibilities:**
 
 * Authenticate the node
-* Generate SAS tokens for a specific blob or container
-* Limit token lifetime
-* Limit permissions to write-only access
+* Generate a unique blob path: `logs/{node_id}/{uuid}`
+* Generate SAS tokens scoped to that specific path only (write-only, 5-minute expiry, blob-level)
+* Prevent cross-node access — each node can only write to its own path
 
 **Why it exists:**
 
 * Prevents direct public access to Blob Storage
 * Removes the need for a central log-ingestion service
+* Path scoping ensures node A can never overwrite node B's logs
 
 ---
 
@@ -325,7 +322,7 @@ NixOS Node Local Agent -> Cosmos DB
 
 1. A NixOS node asks the Token Service for a temporary upload token.
 2. The Token Service returns a short-lived SAS token.
-3. The node uploads logs directly to Blob Storage.
+3. The node uploads logs directly to the unique blob path provided by the Token Service.
 4. Blob creation triggers an Azure Function.
 5. The Router Function normalizes the event and sends it to Service Bus Topic `analysis`.
 6. The Analysis Agent consumes the message, calls OpenCode Go API (key from Key Vault via Managed Identity), and detects issues.

@@ -138,6 +138,12 @@ Log Upload
 - We will use Terraform as IaC
 - We will use Python as the main language
 - CI/CD will be delivered by Nix; implementation will be done in a later phase
+- Project structure: flat sibling directories at root level (no nested monorepo)
+- Token Service generates path-scoped SAS tokens: `logs/{node_id}/{uuid}` — write-only, 5-minute expiry, no list/read/delete permissions
+- Local Agent does NOT use dry-run mode — decisions are executed immediately
+- OpenCode Go API is the only AI provider (no fallback); custom providers may be added later
+- Shared message schemas use Pydantic models in a top-level `schemas/` directory
+- Linting/formatting: ruff (all-in-one Python linter + formatter)
 
 ## Component to Azure Service Mapping
 
@@ -153,16 +159,23 @@ Log Upload
 
 ## To implement
 
-- [ ] Log Service (on node)
-- [ ] Upload Authorization Service (Token Service)
-- [ ] Log Router / Normalizer
-- [ ] Analysis Agent (AI-powered – OpenCode Go API)
-- [ ] Decision Agent (?)
-- [ ] Local Agent (Local Agent on Node)
+- [ ] **Phase 0:** Project setup — ruff config, shared schemas directory, fix typos
+- [ ] **Phase 1:** Token Service — path-scoped SAS token generation (write-only, 5-min expiry, `logs/{node_id}/{uuid}`)
+- [ ] **Phase 2:** Log Service — replace stubs with real Token Service call + Azure Blob upload with batching and retry
+- [ ] **Phase 3:** Log Router / Normalizer — blob-triggered Azure Function, parse + normalize logs, publish to Service Bus
+- [ ] **Phase 4:** Analysis Agent — Service Bus-triggered, call OpenCode Go API, produce structured analysis results
+- [ ] **Phase 5:** Decision Agent — map analysis to NixOS actions, publish to `decision` topic, store in Cosmos DB
+- [ ] **Phase 6:** Local Agent — on-node service, pull decisions, execute `nixos-rebuild` / `systemctl restart` immediately (no dry-run)
+- [ ] **Phase 7:** Frontend — Streamlit dashboard (nodes, incidents, decisions, results)
+- [ ] **Phase 8:** Error handling & resilience — retry policies, DLQ processing, idempotency, Application Insights dashboards
+- [ ] **Phase 9:** CI/CD — GitHub Actions workflows for all services
+- [ ] **Phase 10:** Documentation & architecture diagram
+
+See [PLAN.md](./PLAN.md) for detailed implementation specifics per phase.
 
 ## TODO
 
-- [ ] Error handling strategy (retry policies, DLQ processing, idempotency, API fallback)
+- [ ] Error handling strategy (retry policies, DLQ processing, idempotency)
 - [ ] Nix-based CI/CD pipeline (build, test, deploy)
-- [ ] Evaluate if Azure OpenAI fallback is needed
 - [ ] Define alerting rules and dashboards in Application Insights
+- [x] ~~Evaluate if Azure OpenAI fallback is needed~~ — Not needed; OpenCode Go API only, per decision

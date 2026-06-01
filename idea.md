@@ -75,12 +75,12 @@ The pipeline will:
 
 5. Local Agent (on Node)
 
-    - Runs on each NixOS machine
-    - Pulls decisions from queue
-    - Applies configuration changes via:
-        - nixos-rebuild switch
-        - rollback generations
-    - Reports execution result
+    - Runs on each NixOS machine as a genuine agent — not just a command executor
+    - Three modes of operation:
+        - **Observe**: proactively monitors local state (services, disk, NixOS generation) and publishes observations to the `analysis` topic alongside logs
+        - **Execute**: pulls decisions from the `decision` topic and applies remediation commands immediately (no dry-run)
+        - **Report**: after execution, reports not just success/failure but full node context (current generation, failed services, disk usage) — closing the feedback loop
+    - Creates a **shared knowledge pipeline**: nodes contribute local expertise that enriches the AI's analysis, producing better decisions than logs alone
 
 6. State Storage
     - Stores:
@@ -140,7 +140,7 @@ Log Upload
 - CI/CD will be delivered by Nix; implementation will be done in a later phase
 - Project structure: flat sibling directories at root level (no nested monorepo)
 - Token Service generates path-scoped SAS tokens: `logs/{node_id}/{uuid}` — write-only, 5-minute expiry, no list/read/delete permissions
-- Local Agent does NOT use dry-run mode — decisions are executed immediately
+- Local Agent design is agentic (observe + execute + report), not a simple pull-and-execute program — it participates bidirectionally in the knowledge pipeline
 - OpenCode Go API is the only AI provider (no fallback); custom providers may be added later
 - Shared message schemas use Pydantic models in a top-level `schemas/` directory
 - Linting/formatting: ruff (all-in-one Python linter + formatter)
@@ -165,7 +165,7 @@ Log Upload
 - [ ] **Phase 3:** Log Router / Normalizer — blob-triggered Azure Function, parse + normalize logs, publish to Service Bus
 - [ ] **Phase 4:** Analysis Agent — Service Bus-triggered, call OpenCode Go API, produce structured analysis results
 - [ ] **Phase 5:** Decision Agent — map analysis to NixOS actions, publish to `decision` topic, store in Cosmos DB
-- [ ] **Phase 6:** Local Agent — on-node service, pull decisions, execute `nixos-rebuild` / `systemctl restart` immediately (no dry-run)
+- [ ] **Phase 6:** Local Agent — agentic on-node participant (observe → publish to `analysis` topic, execute decisions, report rich context back to Cosmos DB and Service Bus)
 - [ ] **Phase 7:** Frontend — Streamlit dashboard (nodes, incidents, decisions, results)
 - [ ] **Phase 8:** Error handling & resilience — retry policies, DLQ processing, idempotency, Application Insights dashboards
 - [ ] **Phase 9:** CI/CD — GitHub Actions workflows for all services

@@ -171,18 +171,24 @@ NixOS Node Local Agent -> Cosmos DB
 
 ### 2.8 Action Agent
 
-**Purpose:** Runs on each NixOS node and applies the selected fix.
+**Purpose:** Runs on each NixOS node as a genuine agent that participates bidirectionally in the knowledge pipeline.
 
-**Responsibilities:**
+**Modes of operation:**
 
-* Read remediation commands from the queue
-* Execute safe actions on the local machine
-* Apply NixOS rollback or rebuild
-* Report success or failure back to Cosmos DB
+1. **Observe** — Proactively monitors local node state (services, disk, NixOS generation) and publishes observations to the Service Bus `analysis` topic. These observations flow into the Analysis Agent alongside normalized logs, enriching the AI's understanding with local context.
+2. **Execute** — Pulls decisions from the Service Bus `decision` topic subscription and applies remediation commands immediately (no dry-run mode).
+3. **Report** — After execution, reports not just success/failure but full node context (current generation, failed services, disk usage) to Cosmos DB — closing the feedback loop.
+
+**Why it is an agent, not a simple executor:**
+
+* A simple executor is unidirectional — it receives commands and returns exit codes.
+* The Local Agent is a participant in a shared knowledge pipeline — it proactively contributes observations and reports rich context.
+* This bidirectional communication allows the Analysis Agent to produce better decisions (e.g., knowing which NixOS generation to roll back to, not just "rollback").
+* Observations from nodes and logs from the cloud both feed into the `analysis` topic, making the pipeline genuinely agentic.
 
 **Important note:**
 
-* The agent should only execute predefined actions, not arbitrary commands.
+* The agent should only execute predefined, whitelisted actions (rollback, restart, rebuild).
 
 ---
 

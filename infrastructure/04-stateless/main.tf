@@ -123,6 +123,14 @@ resource "azurerm_key_vault_secret" "servicebus_connection" {
   depends_on = [azurerm_key_vault_access_policy.func]
 }
 
+resource "azurerm_key_vault_secret" "storage_account_key" {
+  name         = "StorageAccountKey"
+  value        = data.azurerm_storage_account.logs.primary_access_key
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_key_vault_access_policy.func]
+}
+
 # --- Application Insights ---
 
 resource "azurerm_application_insights" "main" {
@@ -182,6 +190,7 @@ resource "azurerm_linux_function_app" "token" {
   app_settings = {
     STORAGE_ACCOUNT_NAME                  = data.azurerm_storage_account.logs.name
     LOGS_CONTAINER_NAME                   = "logs"
+    STORAGE_ACCOUNT_KEY_SECRET            = azurerm_key_vault_secret.storage_account_key.name
     SERVICEBUS_CONNECTION                 = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
     KEYVAULT_NAME                         = azurerm_key_vault.main.name

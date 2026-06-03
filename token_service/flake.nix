@@ -25,6 +25,7 @@
           if test -f ~/.bash_profile; then
               source ~/.bash_profile
           fi
+          uv sync
           export PS1="$PS1❄ => "
         '';
       };

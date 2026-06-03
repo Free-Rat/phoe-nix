@@ -2,10 +2,16 @@
 name = "token_service"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2,<3"]
+dependencies = [
+    "azure-functions>=1.21,<2",
+    "azure-identity>=1.20,<2",
+    "azure-keyvault-secrets>=4.9,<5",
+    "azure-storage-blob>=12.24,<13",
+    "pydantic>=2,<3",
+]
 
 [project.scripts]
-token_service = "token_service.main:main"
+token_service = "token_service.main:run_cli"
 
 [build-system]
 requires = ["hatchling"]
@@ -16,3 +22,6 @@ packages = ["src/token_service"]
 
 [tool.hatch.build]
 sources = ["src"]
+
+[tool.uv]
+package = true

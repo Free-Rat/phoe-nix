@@ -2,7 +2,11 @@
 name = "log_service"
 version = "0.1.0"
 requires-python = ">=3.14"
-dependencies = [ "systemd-python" ]
+dependencies = [
+    "azure-storage-blob>=12.24,<13",
+    "pydantic>=2,<3",
+    "systemd-python",
+]
 
 [project.scripts]
 log_service = "log_service.main:main"
@@ -20,3 +24,5 @@ sources = ["src"]
 [tool.uv.extra-build-dependencies]
 systemd-python = ["setuptools"]
 
+[tool.uv]
+package = true

@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["log_service/src", "schemas/src", "token_service/src"]
+extend-exclude = [
+  "log_service/.venv",
+  "infrastructure/.terraform",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

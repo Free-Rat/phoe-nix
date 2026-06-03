@@ -28,12 +28,8 @@ nix run . -- -s nginx systemd
 # enter nix shell with dependencies
 nix develop
 
-# run as module
-python -m log_service
-
-# or install and run
-pip install -e .
-log-service -s nginx
+# run the installed CLI
+log_service -s nginx
 ```
 
 ### options
@@ -57,6 +53,9 @@ nix run . -- -s nginx systemd docker
 
 # full option syntax
 nix run . -- --services sshd
+
+# from nix develop
+log_service -s nginx
 ```
 
 ### shutdown

@@ -1,63 +1,41 @@
-# Log Service (on node)
+# Log Service
 
-## responsibility
+Runs on a NixOS node, tails systemd journal entries, batches them, uploads them to Blob Storage, and spools failed batches locally for retry.
 
-    - Gets a token from Upload Authorization Service
-    - Collects logs from NixOS nodes
-    - Pushes raw logs to Azure Blob Storage
+In the proof-of-concept direction, these uploaded logs are one of the evidence streams that eventually drive local config-repair attempts by `local_agent`. See `../proof-of-concept-direction.md`.
 
-## implementation
+## How It Works
 
-    - we callect journal logs for servicies specified in args
+1. Subscribe to journal entries, optionally filtered by unit names from CLI args.
+2. Buffer entries in memory.
+3. Flush when the batch size limit is reached, when the flush interval elapses, or during shutdown.
+4. For each flush, request a fresh SAS URL from `token_service`.
+5. Upload the batch payload to Blob Storage.
+6. If upload retries are exhausted, write the batch to the spool directory and replay it on the next flush.
 
-## usage
+## Modules
 
-### running with nix run (no shell needed)
+- `config.py`: runtime configuration including batch and retry settings
+- `token_client.py`: Token Service HTTP client
+- `storage.py`: batch payload serialization and blob upload adapter
+- `uploader.py`: batching, retry, and spooling logic
+- `main.py`: journal loop and signal handling
+
+## Usage
+
+Preferred service commands from this repo:
 
 ```bash
-# run directly
-nix run .
-
-# with options
-nix run . -- -s nginx systemd
-```
-
-### running with nix develop
-
-```bash
-# enter nix shell with dependencies
 nix develop
-
-# run the installed CLI
 log_service -s nginx
 ```
 
-### options
-
-```
--s, --services    Filter logs by service name(s). If not specified, all logs are shown.
--h, --help        Show help message
-```
-
-### examples
+Repo-level test command:
 
 ```bash
-# show all logs
-nix run . 
-
-# filter by single service
-nix run . -- -s nginx
-
-# filter by multiple services
-nix run . -- -s nginx systemd docker
-
-# full option syntax
-nix run . -- --services sshd
-
-# from nix develop
-log_service -s nginx
+bash scripts/test.sh
 ```
 
-### shutdown
+## Note
 
-The service handles `SIGINT` (Ctrl+C) and `SIGTERM` gracefully, cleaning up before exit.
+The service logic and tests are implemented, but the existing `nix run` packaging path still needs follow-up cleanup in `flake.nix`.

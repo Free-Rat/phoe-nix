@@ -6,10 +6,14 @@ This document describes the Azure resources deployed via Terraform
 
 The solution is event-driven and cloud-native. Nodes request temporary upload permission, upload logs directly to Azure Blob Storage, and the rest of the pipeline processes the logs asynchronously.
 
+The intended proof-of-concept direction is more agentic than a simple command pipeline: cloud stages analyze and route problems, while the on-node `local_agent` is expected to become the main config-repair engine on disposable VMs. See `../proof-of-concept-direction.md`.
+
+Cloud-side AI continues to use the OpenCode Go API. Only the on-node repair loop is expected to use a local Ollama model.
+
 ```text
 NixOS Node Log Service -> Token Service -> SAS token
 NixOS Node Log Service -> Azure Blob Storage -> Azure Function (Router)
-Azure Function -> Service Bus Topic:analysis -> Analysis Agent -> Decision Agent -> Service Bus Topic:decision -> NixOS Node Local Agent
+Azure Function -> Service Bus Topic:analysis-input -> Analysis Agent -> Service Bus Topic:analysis-results -> Decision Agent -> Service Bus Topic:final-decisions -> NixOS Node Local Agent
 NixOS Node Local Agent -> Cosmos DB
 ```
 
@@ -109,16 +113,17 @@ NixOS Node Local Agent -> Cosmos DB
 **Recommended topology:**
 
 * A single Service Bus namespace with multiple topics:
-  * **Topic `analysis`** – log processing events
-  * **Topic `decision`** – actionable decisions
+  * **Topic `analysis-input`** – normalized logs and local observations
+  * **Topic `analysis-results`** – diagnosis output from `analysis_agent`
+  * **Topic `final-decisions`** – remediation intent for `local_agent`
 * No Queue Storage is needed; topics with subscriptions cover all communication patterns.
 
 **Usage:**
 
-* Router publishes normalized log events to the `analysis` topic
-* Analysis Agent subscribes to the `analysis` topic and publishes results to the `decision` topic
-* Decision Agent subscribes to the `decision` topic
-* Local Agent pulls decisions from the `decision` topic subscription
+* Router publishes normalized log events to the `analysis-input` topic
+* Analysis Agent subscribes to `analysis-input` and publishes results to `analysis-results`
+* Decision Agent subscribes to `analysis-results`
+* Local Agent pulls decisions from the `final-decisions` topic subscription
 
 **Direct connection:**
 
@@ -159,13 +164,13 @@ NixOS Node Local Agent -> Cosmos DB
 
 **Responsibilities:**
 
-* Decide whether the node should rollback, restart a service, or reapply configuration
-* Create a safe, structured action request
+* Decide which node should act and what remediation intent should be attempted
+* Create a decision record that gives the local agent enough context to attempt repair
 * Store the decision for auditing
 
 **Output:**
 
-* Action message sent to Service Bus Queue
+* Decision message sent to Service Bus topic `final-decisions`
 
 ---
 
@@ -175,9 +180,9 @@ NixOS Node Local Agent -> Cosmos DB
 
 **Modes of operation:**
 
-1. **Observe** — Proactively monitors local node state (services, disk, NixOS generation) and publishes observations to the Service Bus `analysis` topic. These observations flow into the Analysis Agent alongside normalized logs, enriching the AI's understanding with local context.
-2. **Execute** — Pulls decisions from the Service Bus `decision` topic subscription and applies remediation commands immediately (no dry-run mode).
-3. **Report** — After execution, reports not just success/failure but full node context (current generation, failed services, disk usage) to Cosmos DB — closing the feedback loop.
+1. **Observe** — Proactively monitors local node state (services, disk, NixOS generation) and publishes observations to the Service Bus `analysis-input` topic. These observations flow into the Analysis Agent alongside normalized logs, enriching the AI's understanding with local context.
+2. **Execute** — Pulls decisions from the Service Bus `final-decisions` topic subscription, reads the related analysis context, and attempts local repair.
+3. **Report** — After execution, reports not just success/failure but full node context, config changes, rebuild outputs, and Git revision changes to Cosmos DB — closing the feedback loop.
 
 **Why it is an agent, not a simple executor:**
 
@@ -188,7 +193,8 @@ NixOS Node Local Agent -> Cosmos DB
 
 **Important note:**
 
-* The agent should only execute predefined, whitelisted actions (rollback, restart, rebuild).
+* In the current proof-of-concept direction, the agent may make broader config changes because the nodes are disposable VMs. Visibility and traceability matter more than strict safety.
+* For VM proof-of-concept setups, Ollama should be reached from the guest over private host/VM HTTP rather than a public endpoint.
 
 ---
 
@@ -330,9 +336,9 @@ NixOS Node Local Agent -> Cosmos DB
 2. The Token Service returns a short-lived SAS token.
 3. The node uploads logs directly to the unique blob path provided by the Token Service.
 4. Blob creation triggers an Azure Function.
-5. The Router Function normalizes the event and sends it to Service Bus Topic `analysis`.
-6. The Analysis Agent consumes the message, calls OpenCode Go API (key from Key Vault via Managed Identity), and detects issues.
-7. The Decision Agent creates a remediation plan and publishes to Topic `decision`.
+5. The Router Function normalizes the event and sends it to Service Bus Topic `analysis-input`.
+6. The Analysis Agent consumes the message, calls OpenCode Go API (key from Key Vault via Managed Identity), and publishes analysis output to Topic `analysis-results`.
+7. The Decision Agent consumes the analysis result, creates a remediation plan, and publishes to Topic `final-decisions`.
 8. The Local Agent on the node pulls the decision and applies the fix.
 9. Results are stored in Cosmos DB and shown in the frontend.
 
@@ -426,5 +432,3 @@ This means prior modules must be applied before later ones, but later modules ca
 ## 9. Summary
 
 This infrastructure supports a fully event-driven distributed system where NixOS nodes can upload logs securely, the cloud pipeline can analyze them asynchronously, and local agents can apply self-healing actions automatically.
-
-

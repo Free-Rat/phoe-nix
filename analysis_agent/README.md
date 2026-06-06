@@ -15,7 +15,7 @@ The current implementation still validates structured `AnalysisResult` payloads,
 
 ## Message Flow
 
-1. Read message from `analysis` topic.
+1. Read message from the `analysis-input` topic subscription.
 2. Detect whether the payload is a `NormalizedLog` or `Observation`.
 3. Build a source-specific prompt.
 4. Fetch the OpenCode API key from Key Vault.

@@ -1,0 +1,13 @@
+{
+  "scriptFile": "main.py",
+  "bindings": [
+    {
+      "type": "serviceBusTrigger",
+      "direction": "in",
+      "name": "msg",
+      "topicName": "decision",
+      "subscriptionName": "decision-agent",
+      "connection": "SERVICEBUS_CONNECTION"
+    }
+  ]
+}

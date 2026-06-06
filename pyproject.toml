@@ -1,7 +1,16 @@
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-src = ["log_service/src", "schemas/src", "token_service/src"]
+src = [
+  "analysis_agent/src",
+  "decision_agent/src",
+  "local_agent/src",
+  "log_service/src",
+  "log_router/src",
+  "simulator/src",
+  "schemas/src",
+  "token_service/src",
+]
 extend-exclude = [
   "log_service/.venv",
   "infrastructure/.terraform",

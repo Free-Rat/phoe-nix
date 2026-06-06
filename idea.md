@@ -77,8 +77,8 @@ The pipeline will:
 
     - Runs on each NixOS machine as a genuine agent — not just a command executor
     - Three modes of operation:
-        - **Observe**: proactively monitors local state (services, disk, NixOS generation) and publishes observations to the `analysis` topic alongside logs
-        - **Execute**: pulls decisions from the `decision` topic and applies remediation commands immediately (no dry-run)
+        - **Observe**: proactively monitors local state (services, disk, NixOS generation) and publishes observations to the `analysis-input` topic alongside logs
+        - **Execute**: pulls decisions from the `final-decisions` topic and applies remediation commands immediately (no dry-run)
         - **Report**: after execution, reports not just success/failure but full node context (current generation, failed services, disk usage) — closing the feedback loop
     - Creates a **shared knowledge pipeline**: nodes contribute local expertise that enriches the AI's analysis, producing better decisions than logs alone
 

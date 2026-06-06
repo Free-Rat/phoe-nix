@@ -74,6 +74,6 @@ The `schemas` package is the contract between services. The most important model
 
 ## Current Limits
 
-- current topic wiring is older than the intended design. The target split is `analysis-input`, `analysis-results`, and `final-decisions`.
+- current topic wiring follows the `analysis-input`, `analysis-results`, and `final-decisions` split used by the code and Terraform modules.
 - `local_agent` runtime, proof-of-concept config repair, and the frontend/TUI remain future phases.
 - `log_service` still has a Nix packaging issue on its `nix run` path even though its tested Python logic is implemented.

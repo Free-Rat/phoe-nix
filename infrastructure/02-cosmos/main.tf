@@ -27,21 +27,21 @@ resource "azurerm_cosmosdb_sql_database" "main" {
   account_name        = azurerm_cosmosdb_account.main.name
 }
 
-resource "azurerm_cosmosdb_sql_container" "node_state" {
-  name                  = "node-state"
+resource "azurerm_cosmosdb_sql_container" "observations" {
+  name                  = "observations"
   resource_group_name   = data.azurerm_resource_group.main.name
   account_name          = azurerm_cosmosdb_account.main.name
   database_name         = azurerm_cosmosdb_sql_database.main.name
-  partition_key_paths   = ["/nodeId"]
+  partition_key_paths   = ["/node_id"]
   partition_key_version = 2
 }
 
-resource "azurerm_cosmosdb_sql_container" "incidents" {
-  name                  = "incidents"
+resource "azurerm_cosmosdb_sql_container" "node_state_current" {
+  name                  = "node-state-current"
   resource_group_name   = data.azurerm_resource_group.main.name
   account_name          = azurerm_cosmosdb_account.main.name
   database_name         = azurerm_cosmosdb_sql_database.main.name
-  partition_key_paths   = ["/incidentId"]
+  partition_key_paths   = ["/node_id"]
   partition_key_version = 2
 }
 
@@ -50,7 +50,7 @@ resource "azurerm_cosmosdb_sql_container" "decisions" {
   resource_group_name   = data.azurerm_resource_group.main.name
   account_name          = azurerm_cosmosdb_account.main.name
   database_name         = azurerm_cosmosdb_sql_database.main.name
-  partition_key_paths   = ["/decisionId"]
+  partition_key_paths   = ["/node_id"]
   partition_key_version = 2
 }
 
@@ -59,6 +59,33 @@ resource "azurerm_cosmosdb_sql_container" "execution_results" {
   resource_group_name   = data.azurerm_resource_group.main.name
   account_name          = azurerm_cosmosdb_account.main.name
   database_name         = azurerm_cosmosdb_sql_database.main.name
-  partition_key_paths   = ["/executionId"]
+  partition_key_paths   = ["/node_id"]
+  partition_key_version = 2
+}
+
+resource "azurerm_cosmosdb_sql_container" "config_snapshots" {
+  name                  = "config-snapshots"
+  resource_group_name   = data.azurerm_resource_group.main.name
+  account_name          = azurerm_cosmosdb_account.main.name
+  database_name         = azurerm_cosmosdb_sql_database.main.name
+  partition_key_paths   = ["/node_id"]
+  partition_key_version = 2
+}
+
+resource "azurerm_cosmosdb_sql_container" "repair_traces" {
+  name                  = "repair-traces"
+  resource_group_name   = data.azurerm_resource_group.main.name
+  account_name          = azurerm_cosmosdb_account.main.name
+  database_name         = azurerm_cosmosdb_sql_database.main.name
+  partition_key_paths   = ["/node_id"]
+  partition_key_version = 2
+}
+
+resource "azurerm_cosmosdb_sql_container" "service_status" {
+  name                  = "service-status"
+  resource_group_name   = data.azurerm_resource_group.main.name
+  account_name          = azurerm_cosmosdb_account.main.name
+  database_name         = azurerm_cosmosdb_sql_database.main.name
+  partition_key_paths   = ["/node_id"]
   partition_key_version = 2
 }

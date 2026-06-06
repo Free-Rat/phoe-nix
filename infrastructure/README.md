@@ -189,7 +189,7 @@ NixOS Node Local Agent -> Cosmos DB
 * A simple executor is unidirectional — it receives commands and returns exit codes.
 * The Local Agent is a participant in a shared knowledge pipeline — it proactively contributes observations and reports rich context.
 * This bidirectional communication allows the Analysis Agent to produce better decisions (e.g., knowing which NixOS generation to roll back to, not just "rollback").
-* Observations from nodes and logs from the cloud both feed into the `analysis` topic, making the pipeline genuinely agentic.
+* Observations from nodes and logs from the cloud both feed into the `analysis-input` topic, making the pipeline genuinely agentic.
 
 **Important note:**
 
@@ -407,7 +407,7 @@ Stateless things first (functions, service bus), then data stores, then the reso
 |---|---|
 | Stateless only (functions, service bus, key vault, app insights) | `cd 04-stateless && terraform destroy` |
 | Blob storage (logs data) | `cd 03-blob-storage && terraform destroy` |
-| Cosmos DB (incidents, decisions, execution results) | `cd 02-cosmos && terraform destroy` |
+| Cosmos DB (observations, node state, decisions, execution results, config snapshots, repair traces, service status) | `cd 02-cosmos && terraform destroy` |
 | Everything | `./destroy.sh` |
 
 ### Cross-module references
@@ -425,7 +425,7 @@ This means prior modules must be applied before later ones, but later modules ca
 | Module | Resources |
 |---|---|
 | `01-networking` | Resource group |
-| `02-cosmos` | Cosmos DB account, SQL database (`project-healer`), containers: `node-state`, `incidents`, `decisions`, `execution-results` |
+| `02-cosmos` | Cosmos DB account, SQL database (`project-healer`), containers: `observations`, `node-state-current`, `decisions`, `execution-results`, `config-snapshots`, `repair-traces`, `service-status` |
 | `03-blob-storage` | Storage account (`stprojecthealerdev`), container (`logs`), lifecycle policy (cleanup after 30 days) |
 | `04-stateless` | Service Bus namespace + topics + subscriptions, Key Vault + secrets, App Insights, managed identity, app service plan, function storage account, 4 Linux Function Apps (token, router, analysis, decision), 7 RBAC role assignments |
 

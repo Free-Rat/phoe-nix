@@ -31,21 +31,27 @@ resource "azurerm_servicebus_namespace" "main" {
   tags = local.tags
 }
 
-resource "azurerm_servicebus_topic" "analysis" {
-  name                  = "analysis"
+resource "azurerm_servicebus_topic" "analysis_input" {
+  name                  = "analysis-input"
   namespace_id          = azurerm_servicebus_namespace.main.id
   max_size_in_megabytes = 1024
 }
 
-resource "azurerm_servicebus_topic" "decision" {
-  name                  = "decision"
+resource "azurerm_servicebus_topic" "analysis_results" {
+  name                  = "analysis-results"
+  namespace_id          = azurerm_servicebus_namespace.main.id
+  max_size_in_megabytes = 1024
+}
+
+resource "azurerm_servicebus_topic" "final_decisions" {
+  name                  = "final-decisions"
   namespace_id          = azurerm_servicebus_namespace.main.id
   max_size_in_megabytes = 1024
 }
 
 resource "azurerm_servicebus_subscription" "analysis_agent" {
   name               = "analysis-agent"
-  topic_id           = azurerm_servicebus_topic.analysis.id
+  topic_id           = azurerm_servicebus_topic.analysis_input.id
   max_delivery_count = 5
 
   dead_lettering_on_message_expiration = true
@@ -53,7 +59,7 @@ resource "azurerm_servicebus_subscription" "analysis_agent" {
 
 resource "azurerm_servicebus_subscription" "decision_agent" {
   name               = "decision-agent"
-  topic_id           = azurerm_servicebus_topic.decision.id
+  topic_id           = azurerm_servicebus_topic.analysis_results.id
   max_delivery_count = 5
 
   dead_lettering_on_message_expiration = true
@@ -61,7 +67,7 @@ resource "azurerm_servicebus_subscription" "decision_agent" {
 
 resource "azurerm_servicebus_subscription" "local_agent" {
   name               = "local-agent"
-  topic_id           = azurerm_servicebus_topic.decision.id
+  topic_id           = azurerm_servicebus_topic.final_decisions.id
   max_delivery_count = 5
 
   dead_lettering_on_message_expiration = true
@@ -191,10 +197,8 @@ resource "azurerm_linux_function_app" "token" {
     STORAGE_ACCOUNT_NAME                  = data.azurerm_storage_account.logs.name
     LOGS_CONTAINER_NAME                   = "logs"
     STORAGE_ACCOUNT_KEY_SECRET            = azurerm_key_vault_secret.storage_account_key.name
-    SERVICEBUS_CONNECTION                 = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
     KEYVAULT_NAME                         = azurerm_key_vault.main.name
-    OPENCODE_API_KEY_SECRET               = azurerm_key_vault_secret.opencode_api_key.name
   }
 
   site_config {
@@ -225,7 +229,7 @@ resource "azurerm_linux_function_app" "router" {
 
   app_settings = {
     SERVICEBUS_CONNECTION                 = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
-    SERVICEBUS_TOPIC_ANALYSIS_NAME        = azurerm_servicebus_topic.analysis.name
+    SERVICEBUS_TOPIC_ANALYSIS_INPUT_NAME  = azurerm_servicebus_topic.analysis_input.name
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
     KEYVAULT_NAME                         = azurerm_key_vault.main.name
   }
@@ -258,8 +262,7 @@ resource "azurerm_linux_function_app" "analysis" {
 
   app_settings = {
     SERVICEBUS_CONNECTION                 = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
-    SERVICEBUS_TOPIC_ANALYSIS_NAME        = azurerm_servicebus_topic.analysis.name
-    SERVICEBUS_TOPIC_DECISION_NAME        = azurerm_servicebus_topic.decision.name
+    SERVICEBUS_TOPIC_ANALYSIS_RESULTS_NAME = azurerm_servicebus_topic.analysis_results.name
     KEYVAULT_NAME                         = azurerm_key_vault.main.name
     OPENCODE_API_KEY_SECRET               = azurerm_key_vault_secret.opencode_api_key.name
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
@@ -293,7 +296,8 @@ resource "azurerm_linux_function_app" "decision" {
 
   app_settings = {
     SERVICEBUS_CONNECTION                 = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
-    SERVICEBUS_TOPIC_DECISION_NAME        = azurerm_servicebus_topic.decision.name
+    SERVICEBUS_TOPIC_ANALYSIS_RESULTS_NAME = azurerm_servicebus_topic.analysis_results.name
+    SERVICEBUS_TOPIC_FINAL_DECISIONS_NAME  = azurerm_servicebus_topic.final_decisions.name
     COSMOSDB_ENDPOINT                     = data.azurerm_cosmosdb_account.main.endpoint
     COSMOSDB_DATABASE_NAME                = data.azurerm_cosmosdb_sql_database.main.name
     KEYVAULT_NAME                         = azurerm_key_vault.main.name

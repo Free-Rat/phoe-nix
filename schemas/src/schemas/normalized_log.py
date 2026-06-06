@@ -12,4 +12,5 @@ class NormalizedLog(BaseModel):
     priority: int | None = None
     hostname: str | None = None
     source: str = "log_router"
+    source_identifier: str | None = None
     blob_path: str

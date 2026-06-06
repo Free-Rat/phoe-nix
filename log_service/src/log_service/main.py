@@ -5,8 +5,7 @@ import select
 from systemd import journal
 
 from log_service.config import load_config
-from log_service.storage import build_log_payload, upload_log_payload
-from log_service.token_client import TokenServiceError, request_storage_token
+from log_service.uploader import BatchUploader
 
 running = True
 
@@ -37,22 +36,12 @@ def process_entry(entry: dict[str, object], *, config) -> None:
 
     print(f"{entry['__REALTIME_TIMESTAMP']} {message}")
 
-    # Request a blob-scoped upload token for this entry, then upload the raw payload directly.
-    token_response = request_storage_token(
-        config.token_service_url,
-        node_id=config.node_id,
-        node_api_key=config.node_api_key,
-        timeout_seconds=config.upload_timeout_seconds,
-    )
-    payload = build_log_payload(entry, node_id=config.node_id)
-    upload_log_payload(token_response, payload, timeout_seconds=config.upload_timeout_seconds)
-    print(f"successful save to {token_response.blob_path}")
-
 
 def main():
     global running
     args = parse_args()
     config = load_config()
+    uploader = BatchUploader(config=config)
     service_filter = args.services
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -70,19 +59,32 @@ def main():
 
     poller = select.poll()
     poller.register(journal_reader, journal_reader.get_events())
+    uploader.flush()
 
-    while running and poller.poll():
+    while running:
+        timeout_ms = max(int(config.flush_interval_seconds * 1000), 1000)
+        if not poller.poll(timeout_ms):
+            if uploader.flush_due():
+                uploader.flush()
+            continue
+
         if journal_reader.process() != journal.APPEND:
+            if uploader.flush_due():
+                uploader.flush()
             continue
 
         for entry in journal_reader:
             try:
                 process_entry(entry, config=config)
-            except TokenServiceError as error:
-                print(f"failed to fetch upload token: {error}")
+                if uploader.add_entry(dict(entry)):
+                    uploader.flush()
             except Exception as error:
-                # Keep the journal loop alive even if a single upload fails.
-                print(f"failed to upload log entry: {error}")
+                print(f"failed to buffer log entry: {error}")
+
+        if uploader.flush_due():
+            uploader.flush()
+
+    uploader.flush()
 
     print("Log service stopped.")
 

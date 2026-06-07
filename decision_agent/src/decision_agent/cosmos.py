@@ -8,7 +8,9 @@ def upsert_decision_document(
     database_name: str,
     container_name: str,
     document: dict[str, object],
+    key: str | None = None,
 ) -> None:
-    client = CosmosClient(url=endpoint, credential=DefaultAzureCredential())
+    credential = key if key else DefaultAzureCredential()
+    client = CosmosClient(url=endpoint, credential=credential)
     container = client.get_database_client(database_name).get_container_client(container_name)
     container.upsert_item(document)

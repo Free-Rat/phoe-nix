@@ -5,7 +5,7 @@
       "type": "serviceBusTrigger",
       "direction": "in",
       "name": "msg",
-      "topicName": "analysis",
+      "topicName": "%SERVICEBUS_TOPIC_ANALYSIS_INPUT_NAME%",
       "subscriptionName": "analysis-agent",
       "connection": "SERVICEBUS_CONNECTION"
     }

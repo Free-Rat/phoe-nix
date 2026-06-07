@@ -1,8 +1,7 @@
 from datetime import UTC, datetime
 
-from schemas import NodeState, Observation
-
 from local_agent.state import build_observation_hash, has_significant_change
+from schemas import NodeState, Observation
 
 
 def summarize_node_state(node_state: NodeState) -> str:

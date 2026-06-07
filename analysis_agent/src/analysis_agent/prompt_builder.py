@@ -13,9 +13,11 @@ def build_log_prompt(message: NormalizedLog) -> str:
         "Allowed values:\n"
         "- error_type: service_failure, config_error, dependency_issue, disk_issue, network_issue, other\n"
         "- severity: critical, warning, info\n"
-        "- suggested_action: rollback, restart_service, rebuild, no_action, or a short config-repair intent like apply_config\n"
+        "- suggested_action: rollback, restart_service, rebuild, no_action, "
+        "or a short config-repair intent like apply_config\n"
         "- analysis_text: short human-readable diagnosis for the local agent\n"
-        "- remediation_hint: concrete hint if a config-level repair is needed, such as 'services.openssh.enable = true;'\n\n"
+        "- remediation_hint: concrete hint if a config-level repair is needed, "
+        "such as 'services.openssh.enable = true;'\n\n"
         f"Normalized log entry:\n{payload}"
     )
 

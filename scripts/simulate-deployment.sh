@@ -8,7 +8,7 @@ if [[ -f "$SIMULATOR_DIR/flake.nix" ]] && command -v nix >/dev/null 2>&1; then
   if git -C "$ROOT_DIR" ls-files --error-unmatch "simulator" >/dev/null 2>&1; then
     (
       cd "$SIMULATOR_DIR"
-      nix develop --command sh -c "uv sync --refresh >/dev/null && uv run simulate_pipeline"
+      nix develop --no-write-lock-file --command sh -c "uv sync --refresh >/dev/null && uv run simulate_pipeline"
     )
     exit 0
   fi

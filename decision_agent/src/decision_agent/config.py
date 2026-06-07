@@ -9,6 +9,7 @@ class DecisionAgentConfig(BaseModel):
     final_decisions_topic_name: str
     cosmos_endpoint: str
     cosmos_database_name: str
+    cosmos_key: str | None = None
     cosmos_decisions_container_name: str = "decisions"
 
 
@@ -20,5 +21,6 @@ def load_config(env: dict[str, str] | None = None) -> DecisionAgentConfig:
         final_decisions_topic_name=values.get("SERVICEBUS_TOPIC_FINAL_DECISIONS_NAME", "final-decisions"),
         cosmos_endpoint=values["COSMOSDB_ENDPOINT"],
         cosmos_database_name=values["COSMOSDB_DATABASE_NAME"],
+        cosmos_key=values.get("COSMOSDB_KEY") or None,
         cosmos_decisions_container_name=values.get("COSMOSDB_DECISIONS_CONTAINER_NAME", "decisions"),
     )

@@ -39,7 +39,7 @@ export_requirements() {
   if [[ -f "$service_path/flake.nix" ]] && command -v nix >/dev/null 2>&1; then
     if git -C "$ROOT_DIR" ls-files --error-unmatch "$service_name" >/dev/null 2>&1 && (
       cd "$service_path"
-      nix develop --command sh -c "uv export --no-hashes --format requirements-txt > '$output_path'"
+      nix develop --no-write-lock-file --command sh -c "uv export --no-hashes --format requirements-txt > '$output_path'"
     ); then
       return
     fi

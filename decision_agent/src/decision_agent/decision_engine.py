@@ -6,7 +6,6 @@ from uuid import UUID, uuid4
 
 from schemas import AnalysisResult, Decision
 
-
 NIX_ASSIGNMENT_PATTERN = re.compile(r"\b[a-zA-Z_][a-zA-Z0-9_.-]*\s*=\s*.+?;", re.DOTALL)
 
 

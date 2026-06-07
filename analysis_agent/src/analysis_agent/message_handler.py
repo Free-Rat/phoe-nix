@@ -2,11 +2,10 @@ import json
 from dataclasses import dataclass
 from typing import Literal
 
-from schemas import AnalysisResult, NormalizedLog, Observation
-
 from analysis_agent.ai_client import call_opencode_api, parse_analysis_response
 from analysis_agent.config import AnalysisAgentConfig
 from analysis_agent.prompt_builder import build_prompt
+from schemas import AnalysisResult, NormalizedLog, Observation
 
 
 @dataclass(frozen=True)

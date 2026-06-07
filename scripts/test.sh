@@ -23,7 +23,7 @@ run_tests() {
   if [[ -f "$service_path/flake.nix" ]] && command -v nix >/dev/null 2>&1; then
     if git -C "$ROOT_DIR" ls-files --error-unmatch "$service_name" >/dev/null 2>&1 && (
       cd "$service_path"
-      nix develop --command sh -c "uv sync --refresh >/dev/null && uv run python -m unittest discover -s tests -p 'test*.py'"
+      nix develop --no-write-lock-file --command sh -c "uv sync --refresh >/dev/null && uv run python -m unittest discover -s tests -p 'test*.py'"
     ); then
       return
     fi

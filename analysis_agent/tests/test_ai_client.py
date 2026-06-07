@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import UTC, datetime
 
@@ -11,7 +12,17 @@ class AiClientTests(unittest.TestCase):
 
     def test_parse_analysis_response_applies_defaults_and_fallback_unit(self) -> None:
         result = parse_analysis_response(
-            '{"error_type":"service_failure","severity":"critical","root_cause":"bad config","suggested_action":"restart_service","confidence":0.9,"analysis_text":"bad config requires restart","remediation_hint":"restart nginx"}',
+            json.dumps(
+                {
+                    "error_type": "service_failure",
+                    "severity": "critical",
+                    "root_cause": "bad config",
+                    "suggested_action": "restart_service",
+                    "confidence": 0.9,
+                    "analysis_text": "bad config requires restart",
+                    "remediation_hint": "restart nginx",
+                }
+            ),
             node_id="node-01",
             original_message_id="msg-1",
             source_type="log_router",

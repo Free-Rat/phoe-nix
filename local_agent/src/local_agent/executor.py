@@ -3,10 +3,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from schemas import Decision, NodeState
-
 from local_agent.reporter import build_execution_result, current_time
 from local_agent.state import LocalAgentState, can_apply_remediation, record_remediation, start_remediation
+from schemas import Decision, NodeState
 
 
 @dataclass(frozen=True)

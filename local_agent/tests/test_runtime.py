@@ -1,16 +1,16 @@
 import asyncio
 import unittest
+from datetime import UTC, datetime
 
 from local_agent.config import LocalAgentConfig
 from local_agent.runtime import (
+    LocalAgentRuntime,
     RuntimeDependencies,
-    run_daemon,
     decision_worker,
-    handle_decision,
     observe_once,
     persist_pending,
+    run_daemon,
     run_runtime_once,
-    LocalAgentRuntime,
 )
 from schemas import NodeState
 
@@ -99,6 +99,98 @@ class RuntimeTests(unittest.TestCase):
         )
         self.assertEqual(result["decision_results"][0]["repair_attempts"], 1)
         self.assertTrue(any(container == "repair-traces" for container, _ in persisted))
+
+    def test_run_runtime_once_skips_no_action_decision(self) -> None:
+        decision = {
+            "decision_id": "dec-1",
+            "node_id": "node-01",
+            "analysis_id": "analysis-1",
+            "action": "no_action",
+            "command": "",
+            "severity": "info",
+            "confidence": 0.9,
+            "analysis_summary": "Nothing to do",
+            "remediation_text": "No repair needed.",
+            "idempotency_key": "abc",
+            "timestamp": "2026-01-01T00:00:00Z",
+        }
+
+        result = asyncio.run(
+            run_runtime_once(
+                config=self.build_config(),
+                decision_payloads=[decision],
+                dependencies=RuntimeDependencies(
+                    read_node_state=lambda: NodeState(),
+                    publish_message=lambda **kwargs: None,
+                    execute_repair_loop_func=lambda **kwargs: self.fail("no_action must not run repair"),
+                    persist_document=lambda **kwargs: None,
+                ),
+            )
+        )
+
+        self.assertEqual(result["decision_results"][0], {"status": "no_action"})
+
+    def test_config_repair_rejects_decision_for_another_node(self) -> None:
+        decision = {
+            "decision_id": "dec-1",
+            "node_id": "node-02",
+            "analysis_id": "analysis-1",
+            "action": "apply_config",
+            "command": "",
+            "severity": "critical",
+            "confidence": 0.9,
+            "analysis_summary": "Enable SSH",
+            "remediation_text": "services.openssh.enable = true;",
+            "idempotency_key": "abc",
+            "timestamp": "2026-01-01T00:00:00Z",
+        }
+
+        result = asyncio.run(
+            run_runtime_once(
+                config=self.build_config(),
+                decision_payloads=[decision],
+                dependencies=RuntimeDependencies(
+                    read_node_state=lambda: NodeState(),
+                    publish_message=lambda **kwargs: None,
+                    execute_repair_loop_func=lambda **kwargs: self.fail("wrong-node decision must not run repair"),
+                    persist_document=lambda **kwargs: None,
+                ),
+            )
+        )
+
+        self.assertEqual(result["decision_results"][0]["error"], "decision targeted at another node")
+
+    def test_config_repair_respects_cooldown(self) -> None:
+        now = datetime(2026, 1, 1, tzinfo=UTC)
+        decision = {
+            "decision_id": "dec-1",
+            "node_id": "node-01",
+            "analysis_id": "analysis-1",
+            "action": "apply_config",
+            "command": "",
+            "severity": "critical",
+            "confidence": 0.9,
+            "analysis_summary": "Enable SSH",
+            "remediation_text": "services.openssh.enable = true;",
+            "idempotency_key": "abc",
+            "timestamp": "2026-01-01T00:00:00Z",
+        }
+
+        result = asyncio.run(
+            run_runtime_once(
+                config=self.build_config(),
+                decision_payloads=[decision],
+                dependencies=RuntimeDependencies(
+                    read_node_state=lambda: NodeState(last_remediation_timestamp=now),
+                    publish_message=lambda **kwargs: None,
+                    now_factory=lambda: now,
+                    execute_repair_loop_func=lambda **kwargs: self.fail("cooldown must block repair"),
+                    persist_document=lambda **kwargs: None,
+                ),
+            )
+        )
+
+        self.assertEqual(result["decision_results"][0]["error"], "remediation is blocked by safety limits")
 
     def test_persist_pending_flushes_queue(self) -> None:
         persisted = []

@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from local_agent.bus_client import complete_message, publish_message, receive_messages
-
 from local_agent.config import LocalAgentConfig
 from local_agent.executor import CommandResult, execute_decision
 from local_agent.monitor import build_observation, current_state_hash, should_publish_observation
@@ -23,7 +22,13 @@ from local_agent.reporter import (
     build_service_status_document,
     current_time,
 )
-from local_agent.state import LocalAgentState, new_state, record_remediation, update_node_state
+from local_agent.state import (
+    LocalAgentState,
+    can_apply_remediation,
+    new_state,
+    record_remediation,
+    update_node_state,
+)
 from local_agent.system_state import collect_node_state
 from schemas import Decision, NodeState
 
@@ -170,6 +175,24 @@ async def handle_decision(runtime: LocalAgentRuntime, decision_payload: dict[str
         ),
     )
 
+    if decision.node_id != runtime.config.node_id:
+        await _enqueue_decision_status(
+            runtime,
+            status="skipped",
+            correlation_id=decision.decision_id,
+            detail="decision targeted at another node",
+        )
+        return {"error": "decision targeted at another node"}
+
+    if decision.action == "no_action":
+        await _enqueue_decision_status(
+            runtime,
+            status="skipped",
+            correlation_id=decision.decision_id,
+            detail="no action requested",
+        )
+        return {"status": "no_action"}
+
     if decision.command:
         next_state, execution_result, error = execute_decision(
             decision=decision,
@@ -193,6 +216,30 @@ async def handle_decision(runtime: LocalAgentRuntime, decision_payload: dict[str
             build_node_state_document(runtime.config.node_id, next_state.node_state),
         )
         return {"execution_result": execution_result.model_dump(mode="json")}
+
+    if decision.action != "apply_config":
+        await _enqueue_decision_status(
+            runtime,
+            status="failed",
+            correlation_id=decision.decision_id,
+            detail="decision produced no executable repair plan",
+        )
+        return {"error": "decision produced no executable repair plan"}
+
+    now = runtime.dependencies.now_factory()
+    if not can_apply_remediation(
+        runtime.state,
+        cooldown_seconds=runtime.config.cooldown_seconds,
+        max_remediations_per_hour=runtime.config.max_remediations_per_hour,
+        now=now,
+    ):
+        await _enqueue_decision_status(
+            runtime,
+            status="blocked",
+            correlation_id=decision.decision_id,
+            detail="remediation is blocked by safety limits",
+        )
+        return {"error": "remediation is blocked by safety limits"}
 
     repair_outcome = runtime.dependencies.execute_repair_loop_func(
         decision=decision,

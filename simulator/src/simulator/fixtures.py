@@ -3,15 +3,13 @@ from pathlib import Path
 
 from analysis_agent.config import AnalysisAgentConfig
 from decision_agent.config import DecisionAgentConfig
-from log_service.config import LogServiceConfig
-from local_agent.state import new_state
-from schemas import NodeState, Observation
-from token_service.config import TokenServiceConfig
-
 from local_agent.config import LocalAgentConfig
-
+from local_agent.state import new_state
+from log_service.config import LogServiceConfig
+from schemas import NodeState, Observation
 from simulator.fakes import FakeBlobStorage, FakeConfigRepo, FakeCosmos, FakeKeyVault, FakeLocalAgent, FakeServiceBus
 from simulator.pipeline import LocalPipelineEnvironment, simulate_opencode_response
+from token_service.config import TokenServiceConfig
 
 
 def build_environment(*, spool_directory: str | None = None) -> LocalPipelineEnvironment:

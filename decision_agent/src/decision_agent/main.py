@@ -5,7 +5,7 @@ from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
 from decision_agent.app import process_analysis_result
 from decision_agent.config import load_config
-from schemas import AnalysisResult, Decision
+from schemas import AnalysisResult
 
 
 def publish_decision(*, connection_string: str, topic_name: str, decision_body: str, message_id: str) -> None:

@@ -95,7 +95,9 @@ resource "azurerm_key_vault" "main" {
   soft_delete_retention_days = 90
 
   network_acls {
-    default_action = "Deny"
+    # POC-friendly: let Function Apps resolve Key Vault references and SDK secret reads
+    # without private endpoint/VNet plumbing.
+    default_action = "Allow"
     bypass         = "AzureServices"
   }
 
@@ -132,6 +134,14 @@ resource "azurerm_key_vault_secret" "servicebus_connection" {
 resource "azurerm_key_vault_secret" "storage_account_key" {
   name         = "StorageAccountKey"
   value        = data.azurerm_storage_account.logs.primary_access_key
+  key_vault_id = azurerm_key_vault.main.id
+
+  depends_on = [azurerm_key_vault_access_policy.func]
+}
+
+resource "azurerm_key_vault_secret" "logs_storage_connection" {
+  name         = "LogsStorageConnection"
+  value        = data.azurerm_storage_account.logs.primary_connection_string
   key_vault_id = azurerm_key_vault.main.id
 
   depends_on = [azurerm_key_vault_access_policy.func]
@@ -180,13 +190,14 @@ resource "azurerm_storage_account" "func" {
 }
 
 resource "azurerm_linux_function_app" "token" {
-  name                = "${local.function_app_name}-token"
-  location            = data.azurerm_resource_group.main.location
-  resource_group_name = data.azurerm_resource_group.main.name
-  service_plan_id     = azurerm_service_plan.main.id
+  name                            = "${local.function_app_name}-token"
+  location                        = data.azurerm_resource_group.main.location
+  resource_group_name             = data.azurerm_resource_group.main.name
+  service_plan_id                 = azurerm_service_plan.main.id
+  key_vault_reference_identity_id = azurerm_user_assigned_identity.func.id
 
-  storage_account_name          = azurerm_storage_account.func.name
-  storage_uses_managed_identity = true
+  storage_account_name       = azurerm_storage_account.func.name
+  storage_account_access_key = azurerm_storage_account.func.primary_access_key
 
   identity {
     type         = "UserAssigned"
@@ -194,6 +205,7 @@ resource "azurerm_linux_function_app" "token" {
   }
 
   app_settings = {
+    AZURE_CLIENT_ID                       = azurerm_user_assigned_identity.func.client_id
     STORAGE_ACCOUNT_NAME                  = data.azurerm_storage_account.logs.name
     LOGS_CONTAINER_NAME                   = "logs"
     STORAGE_ACCOUNT_KEY_SECRET            = azurerm_key_vault_secret.storage_account_key.name
@@ -214,13 +226,14 @@ resource "azurerm_linux_function_app" "token" {
 }
 
 resource "azurerm_linux_function_app" "router" {
-  name                = "${local.function_app_name}-router"
-  location            = data.azurerm_resource_group.main.location
-  resource_group_name = data.azurerm_resource_group.main.name
-  service_plan_id     = azurerm_service_plan.main.id
+  name                            = "${local.function_app_name}-router"
+  location                        = data.azurerm_resource_group.main.location
+  resource_group_name             = data.azurerm_resource_group.main.name
+  service_plan_id                 = azurerm_service_plan.main.id
+  key_vault_reference_identity_id = azurerm_user_assigned_identity.func.id
 
-  storage_account_name          = azurerm_storage_account.func.name
-  storage_uses_managed_identity = true
+  storage_account_name       = azurerm_storage_account.func.name
+  storage_account_access_key = azurerm_storage_account.func.primary_access_key
 
   identity {
     type         = "UserAssigned"
@@ -228,8 +241,10 @@ resource "azurerm_linux_function_app" "router" {
   }
 
   app_settings = {
+    AZURE_CLIENT_ID                       = azurerm_user_assigned_identity.func.client_id
     SERVICEBUS_CONNECTION                 = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
     SERVICEBUS_TOPIC_ANALYSIS_INPUT_NAME  = azurerm_servicebus_topic.analysis_input.name
+    LOGS_STORAGE_CONNECTION               = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.logs_storage_connection.versionless_id})"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
     KEYVAULT_NAME                         = azurerm_key_vault.main.name
   }
@@ -247,13 +262,14 @@ resource "azurerm_linux_function_app" "router" {
 }
 
 resource "azurerm_linux_function_app" "analysis" {
-  name                = "${local.function_app_name}-analysis"
-  location            = data.azurerm_resource_group.main.location
-  resource_group_name = data.azurerm_resource_group.main.name
-  service_plan_id     = azurerm_service_plan.main.id
+  name                            = "${local.function_app_name}-analysis"
+  location                        = data.azurerm_resource_group.main.location
+  resource_group_name             = data.azurerm_resource_group.main.name
+  service_plan_id                 = azurerm_service_plan.main.id
+  key_vault_reference_identity_id = azurerm_user_assigned_identity.func.id
 
-  storage_account_name          = azurerm_storage_account.func.name
-  storage_uses_managed_identity = true
+  storage_account_name       = azurerm_storage_account.func.name
+  storage_account_access_key = azurerm_storage_account.func.primary_access_key
 
   identity {
     type         = "UserAssigned"
@@ -261,11 +277,13 @@ resource "azurerm_linux_function_app" "analysis" {
   }
 
   app_settings = {
-    SERVICEBUS_CONNECTION                 = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
+    AZURE_CLIENT_ID                        = azurerm_user_assigned_identity.func.client_id
+    SERVICEBUS_CONNECTION                  = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
+    SERVICEBUS_TOPIC_ANALYSIS_INPUT_NAME   = azurerm_servicebus_topic.analysis_input.name
     SERVICEBUS_TOPIC_ANALYSIS_RESULTS_NAME = azurerm_servicebus_topic.analysis_results.name
-    KEYVAULT_NAME                         = azurerm_key_vault.main.name
-    OPENCODE_API_KEY_SECRET               = azurerm_key_vault_secret.opencode_api_key.name
-    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
+    KEYVAULT_NAME                          = azurerm_key_vault.main.name
+    OPENCODE_API_KEY_SECRET                = azurerm_key_vault_secret.opencode_api_key.name
+    APPLICATIONINSIGHTS_CONNECTION_STRING  = azurerm_application_insights.main.connection_string
   }
 
   site_config {
@@ -281,13 +299,14 @@ resource "azurerm_linux_function_app" "analysis" {
 }
 
 resource "azurerm_linux_function_app" "decision" {
-  name                = "${local.function_app_name}-decision"
-  location            = data.azurerm_resource_group.main.location
-  resource_group_name = data.azurerm_resource_group.main.name
-  service_plan_id     = azurerm_service_plan.main.id
+  name                            = "${local.function_app_name}-decision"
+  location                        = data.azurerm_resource_group.main.location
+  resource_group_name             = data.azurerm_resource_group.main.name
+  service_plan_id                 = azurerm_service_plan.main.id
+  key_vault_reference_identity_id = azurerm_user_assigned_identity.func.id
 
-  storage_account_name          = azurerm_storage_account.func.name
-  storage_uses_managed_identity = true
+  storage_account_name       = azurerm_storage_account.func.name
+  storage_account_access_key = azurerm_storage_account.func.primary_access_key
 
   identity {
     type         = "UserAssigned"
@@ -295,13 +314,15 @@ resource "azurerm_linux_function_app" "decision" {
   }
 
   app_settings = {
-    SERVICEBUS_CONNECTION                 = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
+    AZURE_CLIENT_ID                        = azurerm_user_assigned_identity.func.client_id
+    SERVICEBUS_CONNECTION                  = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.servicebus_connection.versionless_id})"
     SERVICEBUS_TOPIC_ANALYSIS_RESULTS_NAME = azurerm_servicebus_topic.analysis_results.name
     SERVICEBUS_TOPIC_FINAL_DECISIONS_NAME  = azurerm_servicebus_topic.final_decisions.name
-    COSMOSDB_ENDPOINT                     = data.azurerm_cosmosdb_account.main.endpoint
-    COSMOSDB_DATABASE_NAME                = data.azurerm_cosmosdb_sql_database.main.name
-    KEYVAULT_NAME                         = azurerm_key_vault.main.name
-    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
+    COSMOSDB_ENDPOINT                      = data.azurerm_cosmosdb_account.main.endpoint
+    COSMOSDB_KEY                           = data.azurerm_cosmosdb_account.main.primary_key
+    COSMOSDB_DATABASE_NAME                 = data.azurerm_cosmosdb_sql_database.main.name
+    KEYVAULT_NAME                          = azurerm_key_vault.main.name
+    APPLICATIONINSIGHTS_CONNECTION_STRING  = azurerm_application_insights.main.connection_string
   }
 
   site_config {

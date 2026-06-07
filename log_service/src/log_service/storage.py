@@ -1,7 +1,6 @@
-import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from urllib import parse, request
+from urllib import request
 
 from azure.storage.blob import BlobClient
 

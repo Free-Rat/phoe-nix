@@ -3,14 +3,12 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from schemas import Decision, NodeState
-
 from local_agent.executor import CommandResult, run_subprocess
 from local_agent.git_repo import commit_and_push, current_revision, read_config_text, refresh_repo, write_config_text
+from schemas import Decision, NodeState
 
 
 @dataclass(frozen=True)

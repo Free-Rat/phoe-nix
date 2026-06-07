@@ -6,6 +6,7 @@ from local_agent.config import load_config
 from local_agent.monitor import build_observation
 from local_agent.reporter import build_node_state_document
 from local_agent.runtime import RuntimeDependencies, run_daemon, run_runtime_once
+from local_agent.state import new_state
 from schemas import NodeState
 
 

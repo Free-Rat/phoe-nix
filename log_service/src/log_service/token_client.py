@@ -1,5 +1,4 @@
 import json
-from collections.abc import Mapping
 from urllib import request
 from urllib.error import HTTPError, URLError
 

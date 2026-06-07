@@ -1,6 +1,6 @@
 import argparse
-import signal
 import select
+import signal
 
 from systemd import journal
 

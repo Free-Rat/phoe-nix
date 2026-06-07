@@ -5,20 +5,19 @@ from analysis_agent.config import AnalysisAgentConfig
 from analysis_agent.message_handler import analyze_message
 from decision_agent.app import process_analysis_result
 from decision_agent.config import DecisionAgentConfig
-from log_router.normalizer import normalize_blob
 from local_agent.config import LocalAgentConfig
 from local_agent.executor import CommandResult
-from log_service.config import LogServiceConfig
-from log_service.uploader import BatchUploader
 from local_agent.repair_planner import execute_repair_loop
 from local_agent.runtime import LocalAgentRuntime, RuntimeDependencies, handle_decision, persist_pending
-from local_agent.state import LocalAgentState, new_state
+from local_agent.state import LocalAgentState
+from log_router.normalizer import normalize_blob
+from log_service.config import LogServiceConfig
+from log_service.uploader import BatchUploader
 from schemas import NodeState, Observation
+from simulator.fakes import FakeBlobStorage, FakeConfigRepo, FakeCosmos, FakeKeyVault, FakeLocalAgent, FakeServiceBus
 from token_service.app import handle_token_request
 from token_service.config import TokenServiceConfig
 from token_service.models import TokenResponse
-
-from simulator.fakes import FakeBlobStorage, FakeConfigRepo, FakeCosmos, FakeKeyVault, FakeLocalAgent, FakeServiceBus
 
 
 @dataclass
@@ -113,16 +112,17 @@ def process_analysis_topic(environment: LocalPipelineEnvironment) -> int:
 
 
 def process_decision_topic(environment: LocalPipelineEnvironment) -> int:
+    def write_document(endpoint, database_name, container_name, document, key=None):
+        del endpoint, database_name, key
+        environment.cosmos.upsert(container_name, document)
+
     count = 0
     for message in environment.service_bus.topic_messages(environment.decision_config.analysis_results_topic_name):
         payload = json.loads(message.body)
         decision = process_analysis_result(
             analysis_result=analyze_result_from_payload(payload),
             config=environment.decision_config,
-            write_document=lambda endpoint, database_name, container_name, document: environment.cosmos.upsert(
-                container_name,
-                document,
-            ),
+            write_document=write_document,
         )
         environment.service_bus.publish(
             topic_name=environment.decision_config.final_decisions_topic_name,

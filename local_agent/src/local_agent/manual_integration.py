@@ -6,7 +6,7 @@ import tempfile
 
 from local_agent.config import load_config
 from local_agent.executor import CommandResult, run_subprocess
-from local_agent.git_repo import commit_and_push, current_revision, read_config_text, refresh_repo, write_config_text
+from local_agent.git_repo import commit_and_push, current_revision, read_config_text, refresh_repo
 from local_agent.ollama_client import generate_text
 from local_agent.repair_planner import execute_repair_loop
 from schemas import Decision, NodeState

@@ -5,7 +5,7 @@
       "type": "serviceBusTrigger",
       "direction": "in",
       "name": "msg",
-      "topicName": "decision",
+      "topicName": "%SERVICEBUS_TOPIC_ANALYSIS_RESULTS_NAME%",
       "subscriptionName": "decision-agent",
       "connection": "SERVICEBUS_CONNECTION"
     }

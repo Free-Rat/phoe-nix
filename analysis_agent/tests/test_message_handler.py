@@ -54,8 +54,16 @@ class MessageHandlerTests(unittest.TestCase):
             message_id="msg-1",
             config=self.config,
             read_secret_value=lambda vault_name, secret_name: "api-key",
-            model_caller=lambda **kwargs: (
-                '{"error_type":"service_failure","severity":"critical","root_cause":"bad config","suggested_action":"restart_service","confidence":0.95,"analysis_text":"bad config requires service restart","remediation_hint":"restart nginx"}'
+            model_caller=lambda **kwargs: json.dumps(
+                {
+                    "error_type": "service_failure",
+                    "severity": "critical",
+                    "root_cause": "bad config",
+                    "suggested_action": "restart_service",
+                    "confidence": 0.95,
+                    "analysis_text": "bad config requires service restart",
+                    "remediation_hint": "restart nginx",
+                }
             ),
         )
 

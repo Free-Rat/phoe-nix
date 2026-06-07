@@ -18,22 +18,16 @@ class PipelineSimulationTests(unittest.TestCase):
         self.assertEqual(summary["normalized_count"], 2)
         self.assertEqual(summary["analysis_count"], 2)
         self.assertEqual(summary["decision_count"], 2)
-        self.assertEqual(summary["execution_count"], 2)
+        self.assertEqual(summary["execution_count"], 1)
         self.assertEqual(len(summary["uploaded_blob_paths"]), 1)
         self.assertEqual(len(summary["cosmos_decisions"]), 2)
-        self.assertEqual(len(summary["cosmos_execution_results"]), 2)
-        self.assertEqual(
-            summary["local_agent_commands"],
-            [
-                "nixos-rebuild test && nixos-rebuild switch",
-                "nixos-rebuild test && nixos-rebuild switch",
-            ],
-        )
+        self.assertEqual(len(summary["cosmos_execution_results"]), 1)
+        self.assertEqual(summary["local_agent_commands"], ["nixos-rebuild test && nixos-rebuild switch"])
         self.assertTrue(all(item["action"] == "apply_config" for item in summary["cosmos_decisions"]))
         self.assertTrue(all(item["command"] == "" for item in summary["cosmos_decisions"]))
         self.assertEqual(len(summary["analysis_results_messages"]), 2)
-        self.assertEqual(len(summary["cosmos_repair_traces"]), 2)
-        self.assertEqual(len(summary["cosmos_config_snapshots"]), 2)
+        self.assertEqual(len(summary["cosmos_repair_traces"]), 1)
+        self.assertEqual(len(summary["cosmos_config_snapshots"]), 1)
 
     def test_observation_pipeline_flows_through_analysis_to_local_agent(self) -> None:
         summary = run_observation_pipeline(build_environment(), observation=sample_observation())

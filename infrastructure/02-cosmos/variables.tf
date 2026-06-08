@@ -10,6 +10,12 @@ variable "project_name" {
   default     = "project-healer"
 }
 
+variable "location" {
+  description = "Azure region for Cosmos DB resources"
+  type        = string
+  default     = "polandcentral"
+}
+
 variable "cosmosdb_offer_type" {
   description = "Cosmos DB pricing model"
   type        = string

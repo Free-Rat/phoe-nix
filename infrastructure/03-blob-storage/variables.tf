@@ -10,6 +10,12 @@ variable "project_name" {
   default     = "project-healer"
 }
 
+variable "location" {
+  description = "Azure region for blob storage resources"
+  type        = string
+  default     = "polandcentral"
+}
+
 variable "log_retention_days" {
   description = "Number of days to retain logs in Blob Storage before deletion"
   type        = number

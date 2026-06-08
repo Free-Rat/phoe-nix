@@ -24,7 +24,7 @@ data "azurerm_storage_account" "logs" {
 
 resource "azurerm_servicebus_namespace" "main" {
   name                = local.servicebus_ns_name
-  location            = data.azurerm_resource_group.main.location
+  location            = var.location
   resource_group_name = data.azurerm_resource_group.main.name
   sku                 = var.servicebus_sku
 
@@ -86,7 +86,7 @@ resource "azurerm_servicebus_namespace_authorization_rule" "shared_access" {
 
 resource "azurerm_key_vault" "main" {
   name                       = local.keyvault_name
-  location                   = data.azurerm_resource_group.main.location
+  location                   = var.location
   resource_group_name        = data.azurerm_resource_group.main.name
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
@@ -151,7 +151,7 @@ resource "azurerm_key_vault_secret" "logs_storage_connection" {
 
 resource "azurerm_application_insights" "main" {
   name                = local.appinsights_name
-  location            = data.azurerm_resource_group.main.location
+  location            = var.location
   resource_group_name = data.azurerm_resource_group.main.name
   application_type    = "other"
 
@@ -162,7 +162,7 @@ resource "azurerm_application_insights" "main" {
 
 resource "azurerm_user_assigned_identity" "func" {
   name                = "id-${local.name_prefix}-func"
-  location            = data.azurerm_resource_group.main.location
+  location            = var.location
   resource_group_name = data.azurerm_resource_group.main.name
 
   tags = local.tags
@@ -170,7 +170,7 @@ resource "azurerm_user_assigned_identity" "func" {
 
 resource "azurerm_service_plan" "main" {
   name                = local.app_plan_name
-  location            = data.azurerm_resource_group.main.location
+  location            = var.location
   resource_group_name = data.azurerm_resource_group.main.name
   os_type             = "Linux"
   sku_name            = "Y1"
@@ -181,7 +181,7 @@ resource "azurerm_service_plan" "main" {
 resource "azurerm_storage_account" "func" {
   name                            = local.func_storage_account_name
   resource_group_name             = data.azurerm_resource_group.main.name
-  location                        = data.azurerm_resource_group.main.location
+  location                        = var.location
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   allow_nested_items_to_be_public = false
@@ -191,7 +191,7 @@ resource "azurerm_storage_account" "func" {
 
 resource "azurerm_linux_function_app" "token" {
   name                            = "${local.function_app_name}-token"
-  location                        = data.azurerm_resource_group.main.location
+  location                        = var.location
   resource_group_name             = data.azurerm_resource_group.main.name
   service_plan_id                 = azurerm_service_plan.main.id
   key_vault_reference_identity_id = azurerm_user_assigned_identity.func.id
@@ -227,7 +227,7 @@ resource "azurerm_linux_function_app" "token" {
 
 resource "azurerm_linux_function_app" "router" {
   name                            = "${local.function_app_name}-router"
-  location                        = data.azurerm_resource_group.main.location
+  location                        = var.location
   resource_group_name             = data.azurerm_resource_group.main.name
   service_plan_id                 = azurerm_service_plan.main.id
   key_vault_reference_identity_id = azurerm_user_assigned_identity.func.id
@@ -263,7 +263,7 @@ resource "azurerm_linux_function_app" "router" {
 
 resource "azurerm_linux_function_app" "analysis" {
   name                            = "${local.function_app_name}-analysis"
-  location                        = data.azurerm_resource_group.main.location
+  location                        = var.location
   resource_group_name             = data.azurerm_resource_group.main.name
   service_plan_id                 = azurerm_service_plan.main.id
   key_vault_reference_identity_id = azurerm_user_assigned_identity.func.id
@@ -300,7 +300,7 @@ resource "azurerm_linux_function_app" "analysis" {
 
 resource "azurerm_linux_function_app" "decision" {
   name                            = "${local.function_app_name}-decision"
-  location                        = data.azurerm_resource_group.main.location
+  location                        = var.location
   resource_group_name             = data.azurerm_resource_group.main.name
   service_plan_id                 = azurerm_service_plan.main.id
   key_vault_reference_identity_id = azurerm_user_assigned_identity.func.id

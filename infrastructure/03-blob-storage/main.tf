@@ -5,7 +5,7 @@ data "azurerm_resource_group" "main" {
 resource "azurerm_storage_account" "logs" {
   name                            = local.storage_account_name
   resource_group_name             = data.azurerm_resource_group.main.name
-  location                        = data.azurerm_resource_group.main.location
+  location                        = var.location
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
   min_tls_version                 = "TLS1_2"

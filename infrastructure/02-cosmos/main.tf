@@ -4,7 +4,7 @@ data "azurerm_resource_group" "main" {
 
 resource "azurerm_cosmosdb_account" "main" {
   name                = local.cosmosdb_account_name
-  location            = data.azurerm_resource_group.main.location
+  location            = var.location
   resource_group_name = data.azurerm_resource_group.main.name
   offer_type          = var.cosmosdb_offer_type
   kind                = "GlobalDocumentDB"
@@ -14,7 +14,7 @@ resource "azurerm_cosmosdb_account" "main" {
   }
 
   geo_location {
-    location          = data.azurerm_resource_group.main.location
+    location          = var.location
     failover_priority = 0
   }
 

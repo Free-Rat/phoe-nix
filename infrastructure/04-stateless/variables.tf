@@ -10,6 +10,12 @@ variable "project_name" {
   default     = "project-healer"
 }
 
+variable "location" {
+  description = "Azure region for stateless resources"
+  type        = string
+  default     = "swedencentral"
+}
+
 variable "opencode_api_key" {
   description = "OpenCode Go API key stored in Key Vault"
   type        = string

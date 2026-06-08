@@ -41,6 +41,30 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertTrue(decision.idempotency_key)
         self.assertIn("nginx", decision.analysis_summary)
 
+    def test_build_decision_normalizes_no_action_required(self) -> None:
+        decision = build_decision(self.build_analysis(suggested_action="no action required"))
+
+        self.assertEqual(decision.action, "no_action")
+        self.assertEqual(decision.command, "")
+
+    def test_build_decision_normalizes_none_action(self) -> None:
+        decision = build_decision(self.build_analysis(suggested_action="none"))
+
+        self.assertEqual(decision.action, "no_action")
+        self.assertEqual(decision.command, "")
+
+    def test_build_decision_normalizes_punctuated_no_action_required(self) -> None:
+        decision = build_decision(self.build_analysis(suggested_action="No action required."))
+
+        self.assertEqual(decision.action, "no_action")
+        self.assertEqual(decision.command, "")
+
+    def test_build_decision_normalizes_none_required(self) -> None:
+        decision = build_decision(self.build_analysis(suggested_action="None required"))
+
+        self.assertEqual(decision.action, "no_action")
+        self.assertEqual(decision.command, "")
+
     def test_build_decision_leaves_command_empty_for_config_repair_hints(self) -> None:
         decision = build_decision(
             self.build_analysis(

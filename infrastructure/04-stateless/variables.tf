@@ -22,12 +22,22 @@ variable "opencode_api_key" {
   sensitive   = true
 }
 
+variable "node_api_key" {
+  description = "Shared node API key required by the token service for POC VM uploads"
+  type        = string
+  sensitive   = true
+  validation {
+    condition     = trimspace(var.node_api_key) != ""
+    error_message = "node_api_key must be a non-empty shared API key for the POC token service."
+  }
+}
+
 variable "servicebus_sku" {
-  description = "Service Bus pricing tier (Basic, Standard, Premium)"
+  description = "Service Bus pricing tier (Standard, Premium)"
   type        = string
   default     = "Standard"
   validation {
-    condition     = contains(["Basic", "Standard", "Premium"], var.servicebus_sku)
-    error_message = "Service Bus SKU must be Basic, Standard, or Premium."
+    condition     = contains(["Standard", "Premium"], var.servicebus_sku)
+    error_message = "Service Bus SKU must be Standard or Premium because this design requires topics."
   }
 }

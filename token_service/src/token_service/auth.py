@@ -12,7 +12,7 @@ def _normalize_headers(headers: Mapping[str, str]) -> dict[str, str]:
 def authenticate_node_request(
     headers: Mapping[str, str],
     *,
-    expected_api_key: str | None,
+    expected_api_key: str,
     requested_node_id: str,
 ) -> None:
     normalized_headers = _normalize_headers(headers)
@@ -22,6 +22,6 @@ def authenticate_node_request(
     if header_node_id != requested_node_id:
         raise AuthenticationError("x-node-id must match the requested node_id")
 
-    # API key auth is intentionally simple for phase 1 and can be swapped later.
-    if expected_api_key is not None and normalized_headers.get("x-api-key") != expected_api_key:
+    # API key auth is intentionally simple for the POC and can be swapped later.
+    if normalized_headers.get("x-api-key") != expected_api_key:
         raise AuthenticationError("invalid api key")

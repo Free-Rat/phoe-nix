@@ -32,7 +32,7 @@ def run_cli() -> None:
     config = load_config()
     result = handle_token_request(
         raw_body=json.dumps({"node_id": "local-dev"}).encode("utf-8"),
-        headers={"x-node-id": "local-dev", "x-api-key": config.node_api_key or ""},
+        headers={"x-node-id": "local-dev", "x-api-key": config.node_api_key},
         config=config,
         read_storage_account_key=read_secret_value,
     )

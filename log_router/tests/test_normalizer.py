@@ -1,5 +1,6 @@
 import json
 import unittest
+from datetime import UTC, datetime
 
 from log_router.normalizer import normalize_blob, normalize_entry, parse_blob_payload
 
@@ -32,6 +33,18 @@ class NormalizerTests(unittest.TestCase):
         self.assertEqual(normalized.priority, 3)
         self.assertEqual(normalized.source_identifier, "systemd")
         self.assertEqual(normalized.blob_path, "logs/nixos-node-01/abc-123")
+
+    def test_normalize_entry_accepts_iso8601_timestamp(self) -> None:
+        normalized = normalize_entry(
+            {
+                "__REALTIME_TIMESTAMP": "2026-06-08T13:16:02.848036Z",
+                "MESSAGE": "Failed to start nginx.service",
+            },
+            node_id="nixos-node-01",
+            blob_path="logs/nixos-node-01/abc-123",
+        )
+
+        self.assertEqual(normalized.timestamp, datetime(2026, 6, 8, 13, 16, 2, 848036, tzinfo=UTC))
 
     def test_normalize_blob_rejects_entry_without_message(self) -> None:
         with self.assertRaises(ValueError):

@@ -16,7 +16,13 @@ def parse_blob_payload(payload: bytes) -> tuple[str, list[dict[str, object]]]:
 def timestamp_from_journal(raw_timestamp: object) -> datetime:
     if raw_timestamp is None:
         raise ValueError("missing __REALTIME_TIMESTAMP")
-    microseconds = int(str(raw_timestamp))
+
+    raw_text = str(raw_timestamp)
+    try:
+        microseconds = int(raw_text)
+    except ValueError:
+        iso_text = raw_text.replace("Z", "+00:00")
+        return datetime.fromisoformat(iso_text).astimezone(UTC)
     return datetime.fromtimestamp(microseconds / 1_000_000, tz=UTC)
 
 

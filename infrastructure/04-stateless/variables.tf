@@ -32,6 +32,18 @@ variable "node_api_key" {
   }
 }
 
+variable "opencode_api_url" {
+  description = "OpenCode Go API URL used by the analysis function"
+  type        = string
+  default     = "https://opencode.ai/zen/go/v1/chat/completions"
+}
+
+variable "opencode_model" {
+  description = "OpenCode Go model id used by the analysis function"
+  type        = string
+  default     = "deepseek-v4-flash"
+}
+
 variable "servicebus_sku" {
   description = "Service Bus pricing tier (Standard, Premium)"
   type        = string

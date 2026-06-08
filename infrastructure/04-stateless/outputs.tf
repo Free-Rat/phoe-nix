@@ -24,6 +24,19 @@ output "function_app_names" {
   }
 }
 
+output "token_function_url" {
+  description = "Base URL for the token function (append a function key for callers)"
+  value       = "https://${azurerm_linux_function_app.token.name}.azurewebsites.net/api/token"
+}
+
+output "analysis_opencode_config" {
+  description = "Configured OpenCode Go endpoint and model for the analysis function"
+  value = {
+    api_url = var.opencode_api_url
+    model   = var.opencode_model
+  }
+}
+
 output "managed_identity_principal_id" {
   description = "Principal ID of the user-assigned managed identity"
   value       = azurerm_user_assigned_identity.func.principal_id

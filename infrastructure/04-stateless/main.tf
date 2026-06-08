@@ -224,6 +224,7 @@ resource "azurerm_linux_function_app" "token" {
     STORAGE_ACCOUNT_NAME                  = data.azurerm_storage_account.logs.name
     LOGS_CONTAINER_NAME                   = "logs"
     STORAGE_ACCOUNT_KEY_SECRET            = azurerm_key_vault_secret.storage_account_key.name
+    NODE_API_KEY                          = var.node_api_key
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
     KEYVAULT_NAME                         = azurerm_key_vault.main.name
   }
@@ -298,6 +299,8 @@ resource "azurerm_linux_function_app" "analysis" {
     SERVICEBUS_TOPIC_ANALYSIS_RESULTS_NAME = azurerm_servicebus_topic.analysis_results.name
     KEYVAULT_NAME                          = azurerm_key_vault.main.name
     OPENCODE_API_KEY_SECRET                = azurerm_key_vault_secret.opencode_api_key.name
+    OPENCODE_API_URL                       = var.opencode_api_url
+    OPENCODE_MODEL                         = var.opencode_model
     APPLICATIONINSIGHTS_CONNECTION_STRING  = azurerm_application_insights.main.connection_string
   }
 

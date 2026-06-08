@@ -17,7 +17,11 @@ variable "location" {
 }
 
 variable "cosmosdb_offer_type" {
-  description = "Cosmos DB pricing model"
+  description = "Cosmos DB pricing model (Serverless maps to a Standard offer plus the EnableServerless capability)"
   type        = string
   default     = "Serverless"
+  validation {
+    condition     = contains(["Standard", "Serverless"], var.cosmosdb_offer_type)
+    error_message = "Cosmos DB pricing model must be Standard or Serverless."
+  }
 }

@@ -6,8 +6,15 @@ resource "azurerm_cosmosdb_account" "main" {
   name                = local.cosmosdb_account_name
   location            = var.location
   resource_group_name = data.azurerm_resource_group.main.name
-  offer_type          = var.cosmosdb_offer_type
+  offer_type          = "Standard"
   kind                = "GlobalDocumentDB"
+
+  dynamic "capabilities" {
+    for_each = var.cosmosdb_offer_type == "Serverless" ? [1] : []
+    content {
+      name = "EnableServerless"
+    }
+  }
 
   consistency_policy {
     consistency_level = "Session"

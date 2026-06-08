@@ -115,12 +115,27 @@ resource "azurerm_key_vault_access_policy" "func" {
   ]
 }
 
+resource "azurerm_key_vault_access_policy" "current_operator" {
+  key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  secret_permissions = [
+    "Get",
+    "List",
+    "Set",
+    "Delete",
+    "Recover",
+    "Purge",
+  ]
+}
+
 resource "azurerm_key_vault_secret" "opencode_api_key" {
   name         = "OpenCodeApiKey"
   value        = var.opencode_api_key
   key_vault_id = azurerm_key_vault.main.id
 
-  depends_on = [azurerm_key_vault_access_policy.func]
+  depends_on = [azurerm_key_vault_access_policy.func, azurerm_key_vault_access_policy.current_operator]
 }
 
 resource "azurerm_key_vault_secret" "servicebus_connection" {
@@ -128,7 +143,7 @@ resource "azurerm_key_vault_secret" "servicebus_connection" {
   value        = azurerm_servicebus_namespace_authorization_rule.shared_access.primary_connection_string
   key_vault_id = azurerm_key_vault.main.id
 
-  depends_on = [azurerm_key_vault_access_policy.func]
+  depends_on = [azurerm_key_vault_access_policy.func, azurerm_key_vault_access_policy.current_operator]
 }
 
 resource "azurerm_key_vault_secret" "storage_account_key" {
@@ -136,7 +151,7 @@ resource "azurerm_key_vault_secret" "storage_account_key" {
   value        = data.azurerm_storage_account.logs.primary_access_key
   key_vault_id = azurerm_key_vault.main.id
 
-  depends_on = [azurerm_key_vault_access_policy.func]
+  depends_on = [azurerm_key_vault_access_policy.func, azurerm_key_vault_access_policy.current_operator]
 }
 
 resource "azurerm_key_vault_secret" "logs_storage_connection" {
@@ -144,7 +159,7 @@ resource "azurerm_key_vault_secret" "logs_storage_connection" {
   value        = data.azurerm_storage_account.logs.primary_connection_string
   key_vault_id = azurerm_key_vault.main.id
 
-  depends_on = [azurerm_key_vault_access_policy.func]
+  depends_on = [azurerm_key_vault_access_policy.func, azurerm_key_vault_access_policy.current_operator]
 }
 
 # --- Application Insights ---

@@ -393,8 +393,3 @@ resource "azurerm_role_assignment" "func_keyvault_secrets_user" {
   principal_id         = azurerm_user_assigned_identity.func.principal_id
 }
 
-resource "azurerm_role_assignment" "func_monitoring_publisher" {
-  scope                = data.azurerm_resource_group.main.id
-  role_definition_name = "Monitoring Publisher"
-  principal_id         = azurerm_user_assigned_identity.func.principal_id
-}

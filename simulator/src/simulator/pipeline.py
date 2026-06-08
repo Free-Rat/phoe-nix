@@ -190,8 +190,8 @@ def analyze_result_from_payload(payload: dict[str, object]):
     return AnalysisResult.model_validate(payload)
 
 
-def simulate_opencode_response(*, api_url: str, api_key: str, prompt: str, timeout_seconds: float) -> str:
-    del api_url, api_key, timeout_seconds
+def simulate_opencode_response(*, api_url: str, api_key: str, model: str, prompt: str, timeout_seconds: float) -> str:
+    del api_url, api_key, model, timeout_seconds
     lower_prompt = prompt.lower()
     if "failed to start" in lower_prompt or "restart" in lower_prompt or "nginx.service" in lower_prompt:
         return json.dumps(
@@ -219,8 +219,8 @@ def simulate_opencode_response(*, api_url: str, api_key: str, prompt: str, timeo
     )
 
 
-def invalid_opencode_response(*, api_url: str, api_key: str, prompt: str, timeout_seconds: float) -> str:
-    del api_url, api_key, prompt, timeout_seconds
+def invalid_opencode_response(*, api_url: str, api_key: str, model: str, prompt: str, timeout_seconds: float) -> str:
+    del api_url, api_key, model, prompt, timeout_seconds
     return json.dumps(
         {
             "error_type": "other",

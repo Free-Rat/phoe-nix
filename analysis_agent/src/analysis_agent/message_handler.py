@@ -40,6 +40,7 @@ def analyze_message(
     raw_response = model_caller(
         api_url=config.opencode_api_url,
         api_key=api_key,
+        model=config.opencode_model,
         prompt=prompt,
         timeout_seconds=config.ai_timeout_seconds,
     )

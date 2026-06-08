@@ -12,7 +12,8 @@ class MessageHandlerTests(unittest.TestCase):
             analysis_results_topic_name="analysis-results",
             keyvault_name="kv-example",
             opencode_api_key_secret="OpenCodeApiKey",
-            opencode_api_url="https://api.example/v1/analyze",
+            opencode_api_url="https://opencode.ai/zen/go/v1/chat/completions",
+            opencode_model="deepseek-v4-flash",
             ai_timeout_seconds=30.0,
         )
 
@@ -37,6 +38,22 @@ class MessageHandlerTests(unittest.TestCase):
         self.assertEqual(parsed.fallback_unit, "nginx.service")
 
     def test_analyze_message_builds_structured_result(self) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_model_caller(**kwargs):
+            captured.update(kwargs)
+            return json.dumps(
+                {
+                    "error_type": "service_failure",
+                    "severity": "critical",
+                    "root_cause": "bad config",
+                    "suggested_action": "restart_service",
+                    "confidence": 0.95,
+                    "analysis_text": "bad config requires service restart",
+                    "remediation_hint": "restart nginx",
+                }
+            )
+
         result = analyze_message(
             raw_body=json.dumps(
                 {
@@ -54,19 +71,11 @@ class MessageHandlerTests(unittest.TestCase):
             message_id="msg-1",
             config=self.config,
             read_secret_value=lambda vault_name, secret_name: "api-key",
-            model_caller=lambda **kwargs: json.dumps(
-                {
-                    "error_type": "service_failure",
-                    "severity": "critical",
-                    "root_cause": "bad config",
-                    "suggested_action": "restart_service",
-                    "confidence": 0.95,
-                    "analysis_text": "bad config requires service restart",
-                    "remediation_hint": "restart nginx",
-                }
-            ),
+            model_caller=fake_model_caller,
         )
 
+        self.assertEqual(captured["api_url"], "https://opencode.ai/zen/go/v1/chat/completions")
+        self.assertEqual(captured["model"], "deepseek-v4-flash")
         self.assertEqual(result.original_message_id, "msg-1")
         self.assertEqual(result.affected_unit, "nginx.service")
         self.assertEqual(result.suggested_action, "restart_service")

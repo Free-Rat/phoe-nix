@@ -80,6 +80,17 @@ for service in "$@"; do
   export_requirements "$SERVICE_PATH" "$STAGING_PATH/requirements.txt"
 
   cp -R "$SERVICE_PATH/src/." "$STAGING_PATH/"
+  find "$STAGING_PATH" -type d -name '__pycache__' -prune -exec rm -rf {} +
+
+  cat > "$STAGING_PATH/host.json" <<'EOF'
+{
+  "version": "2.0",
+  "extensionBundle": {
+    "id": "Microsoft.Azure.Functions.ExtensionBundle",
+    "version": "[4.0.0, 5.0.0)"
+  }
+}
+EOF
 
   if [[ "$service" == "router" ]]; then
     mkdir -p "$STAGING_PATH/schemas"
@@ -96,7 +107,7 @@ for service in "$@"; do
     : > "$FILTERED_REQUIREMENTS"
     while IFS= read -r line; do
       case "$line" in
-        schemas\ @\ file:*|schemas==*|-e\ ../schemas)
+        schemas\ @\ file:*|schemas==*|-e\ ../schemas|-e\ .|../schemas)
           continue
           ;;
       esac
@@ -113,5 +124,6 @@ for service in "$@"; do
   az functionapp deployment source config-zip \
     --resource-group "$RESOURCE_GROUP" \
     --name "$FUNCTION_NAME" \
-    --src "$ARCHIVE_PATH"
+    --src "$ARCHIVE_PATH" \
+    --build-remote true
 done

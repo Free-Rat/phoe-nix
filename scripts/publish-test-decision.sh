@@ -25,7 +25,7 @@ export RG="${RG:-rg-${PROJECT_NAME}-${ENV}}"
 export SB_NAMESPACE="${SB_NAMESPACE:-}"
 export DECISION_TOPIC="${DECISION_TOPIC:-final-decisions}"
 
-DECISION_ID="phase4-$(date -u +%Y%m%dT%H%M%S)"
+DECISION_ID="${DECISION_ID:-phase4-$(date -u +%Y%m%dT%H%M%S)}"
 export DECISION_ID
 ANALYSIS_ID="${ANALYSIS_ID:-phase4-analysis}"
 export ANALYSIS_ID

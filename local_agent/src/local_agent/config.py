@@ -47,6 +47,8 @@ class LocalAgentConfig(BaseModel):
     observe_interval_seconds: int = Field(default=60, ge=1)
     cooldown_seconds: int = Field(default=300, ge=0)
     max_remediations_per_hour: int = Field(default=3, ge=1)
+    decision_poll_base_seconds: float = Field(default=0.05, gt=0)
+    decision_poll_max_seconds: float = Field(default=1.0, gt=0)
 
 
 def load_config(env: dict[str, str] | None = None) -> LocalAgentConfig:
@@ -91,4 +93,6 @@ def load_config(env: dict[str, str] | None = None) -> LocalAgentConfig:
         observe_interval_seconds=int(values.get("OBSERVE_INTERVAL_SECONDS", "60")),
         cooldown_seconds=int(values.get("COOLDOWN_SECONDS", "300")),
         max_remediations_per_hour=int(values.get("MAX_REMEDIATIONS_PER_HOUR", "3")),
+        decision_poll_base_seconds=float(values.get("DECISION_POLL_BASE_SECONDS", "0.05")),
+        decision_poll_max_seconds=float(values.get("DECISION_POLL_MAX_SECONDS", "1.0")),
     )

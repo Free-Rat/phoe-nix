@@ -385,12 +385,16 @@ def _message_correlation_id(message: object) -> str:
 async def decision_worker(runtime: LocalAgentRuntime, *, stop_after_idle_cycles: int | None = None) -> int:
     processed = 0
     idle_cycles = 0
+    base_sleep = runtime.config.decision_poll_base_seconds
+    max_sleep = runtime.config.decision_poll_max_seconds
+    current_sleep = base_sleep
+    receive_failure_streak = 0
     while True:
         if not runtime.config.servicebus_enabled or not runtime.config.servicebus_connection.strip():
             idle_cycles += 1
             if stop_after_idle_cycles is not None and idle_cycles >= stop_after_idle_cycles:
                 return processed
-            await runtime.dependencies.sleep(0.05)
+            await runtime.dependencies.sleep(base_sleep)
             continue
         try:
             messages = await asyncio.to_thread(
@@ -407,15 +411,21 @@ async def decision_worker(runtime: LocalAgentRuntime, *, stop_after_idle_cycles:
                 correlation_id=runtime.config.node_id,
                 detail=str(error),
             )
+            receive_failure_streak += 1
+            if receive_failure_streak > 1:
+                current_sleep = min(current_sleep * 2, max_sleep)
             messages = []
+        else:
+            receive_failure_streak = 0
         if not messages:
             idle_cycles += 1
             if stop_after_idle_cycles is not None and idle_cycles >= stop_after_idle_cycles:
                 return processed
-            await runtime.dependencies.sleep(0.05)
+            await runtime.dependencies.sleep(current_sleep)
             continue
 
         idle_cycles = 0
+        current_sleep = base_sleep
         for message in messages:
             correlation_id = _message_correlation_id(message)
             try:

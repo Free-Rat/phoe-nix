@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 from datetime import UTC, datetime
 
@@ -351,3 +352,75 @@ class RuntimeTests(unittest.TestCase):
                 for item in persisted
             )
         )
+
+    def test_decision_worker_applies_exponential_backoff_on_persistent_receive_errors(self) -> None:
+        sleeps: list[float] = []
+
+        def receive_messages(**kwargs):
+            del kwargs
+            raise RuntimeError("namespace unreachable")
+
+        async def record_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        runtime = LocalAgentRuntime(
+            config=self.build_config().model_copy(
+                update={"decision_poll_base_seconds": 0.05, "decision_poll_max_seconds": 0.4}
+            ),
+            dependencies=RuntimeDependencies(
+                read_node_state=lambda: NodeState(),
+                persist_document=lambda **kwargs: None,
+                receive_messages=receive_messages,
+                complete_message=lambda **kwargs: None,
+                sleep=record_sleep,
+            ),
+        )
+
+        processed = asyncio.run(decision_worker(runtime, stop_after_idle_cycles=5))
+
+        self.assertEqual(processed, 0)
+        # First error stays at base; subsequent errors double up to the cap.
+        # stop_after_idle_cycles=5 returns *before* the 5th sleep, so we
+        # observe the first four backoff values.
+        self.assertEqual(sleeps, [0.05, 0.1, 0.2, 0.4])
+
+    def test_decision_worker_resets_backoff_after_successful_receive(self) -> None:
+        sleeps: list[float] = []
+        calls = {"count": 0}
+        decision_payload = json.dumps({"decision_id": "dec-1", "node_id": "node-01"})
+
+        def receive_messages(**kwargs):
+            del kwargs
+            calls["count"] += 1
+            if calls["count"] <= 2:
+                raise RuntimeError("transient error")
+            if calls["count"] == 3:
+                return [{"body": decision_payload, "message_id": "msg-1"}]
+            return []
+
+        async def record_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        runtime = LocalAgentRuntime(
+            config=self.build_config().model_copy(
+                update={"decision_poll_base_seconds": 0.05, "decision_poll_max_seconds": 0.4}
+            ),
+            dependencies=RuntimeDependencies(
+                read_node_state=lambda: NodeState(),
+                persist_document=lambda **kwargs: None,
+                receive_messages=receive_messages,
+                complete_message=lambda **kwargs: None,
+                sleep=record_sleep,
+            ),
+        )
+
+        # Note: the decision payload above is intentionally incomplete (missing
+        # required fields). handle_decision will raise and the worker will
+        # record 'failed' status; that's enough to prove the backoff reset
+        # path runs after a successful receive.
+        processed = asyncio.run(decision_worker(runtime, stop_after_idle_cycles=3))
+
+        # Two error cycles (first at base, second doubled), then a successful
+        # receive that resets to base, then idle at base.
+        self.assertEqual(sleeps[:3], [0.05, 0.1, 0.05])
+        self.assertEqual(processed, 0)

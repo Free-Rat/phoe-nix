@@ -7,6 +7,8 @@ from local_agent.config import LocalAgentConfig
 from local_agent.runtime import (
     LocalAgentRuntime,
     RuntimeDependencies,
+    _coerce_message_body_to_bytes,
+    _message_body_to_payload,
     decision_worker,
     observe_once,
     persist_pending,
@@ -424,3 +426,108 @@ class RuntimeTests(unittest.TestCase):
         # receive that resets to base, then idle at base.
         self.assertEqual(sleeps[:3], [0.05, 0.1, 0.05])
         self.assertEqual(processed, 0)
+
+
+class MessageBodyToPayloadTests(unittest.TestCase):
+    """Cover the various shapes an incoming SB message body can take."""
+
+    def test_dict_with_string_body(self) -> None:
+        payload = json.dumps({"decision_id": "d-1", "node_id": "n", "action": "no_action"})
+        self.assertEqual(
+            _message_body_to_payload({"body": payload, "message_id": "m-1"}),
+            {"decision_id": "d-1", "node_id": "n", "action": "no_action"},
+        )
+
+    def test_dict_with_bytes_body(self) -> None:
+        payload = json.dumps({"decision_id": "d-2"}).encode("utf-8")
+        self.assertEqual(
+            _message_body_to_payload({"body": payload}),
+            {"decision_id": "d-2"},
+        )
+
+    def test_dict_with_no_body_key_returns_message_as_is(self) -> None:
+        # The mock backend sometimes returns shapes without a "body" key
+        # (e.g. already-parsed payloads).
+        self.assertEqual(
+            _message_body_to_payload({"decision_id": "d-3"}),
+            {"decision_id": "d-3"},
+        )
+
+    def test_service_bus_received_message_with_generator_body(self) -> None:
+        """azure-servicebus 7.x exposes ``message.body`` as a generator."""
+
+        class FakeReceivedMessage:
+            def __init__(self, chunks: list[bytes]) -> None:
+                self.body = (chunk for chunk in chunks)
+                self.message_id = "msg-gen"
+
+        payload = json.dumps({"decision_id": "d-4", "node_id": "n"}).encode("utf-8")
+        message = FakeReceivedMessage([payload[:10], payload[10:]])
+        self.assertEqual(
+            _message_body_to_payload(message),
+            {"decision_id": "d-4", "node_id": "n"},
+        )
+
+    def test_service_bus_received_message_with_get_body_method(self) -> None:
+        """Older SDK + some transports expose ``get_body()`` returning bytes."""
+
+        class FakeLegacyMessage:
+            def get_body(self) -> bytes:
+                return json.dumps({"decision_id": "d-5"}).encode("utf-8")
+
+        self.assertEqual(
+            _message_body_to_payload(FakeLegacyMessage()),
+            {"decision_id": "d-5"},
+        )
+
+    def test_service_bus_received_message_with_bytes_body(self) -> None:
+        class FakeBytesMessage:
+            body = json.dumps({"decision_id": "d-6"}).encode("utf-8")
+
+        self.assertEqual(
+            _message_body_to_payload(FakeBytesMessage()),
+            {"decision_id": "d-6"},
+        )
+
+    def test_missing_body_attribute_falls_back_to_empty_dict(self) -> None:
+        class EmptyMessage:
+            pass
+
+        self.assertEqual(_message_body_to_payload(EmptyMessage()), {})
+
+    def test_invalid_body_raises_type_error(self) -> None:
+        class BadMessage:
+            body = 12345  # type: ignore[assignment]
+
+        with self.assertRaises(TypeError):
+            _message_body_to_payload(BadMessage())
+
+
+class CoerceMessageBodyToBytesTests(unittest.TestCase):
+    def test_bytes_passthrough(self) -> None:
+        self.assertEqual(_coerce_message_body_to_bytes(b"abc"), b"abc")
+
+    def test_bytearray_converted(self) -> None:
+        self.assertEqual(_coerce_message_body_to_bytes(bytearray(b"abc")), b"abc")
+
+    def test_string_encoded(self) -> None:
+        self.assertEqual(_coerce_message_body_to_bytes("abc"), b"abc")
+
+    def test_dict_serialised(self) -> None:
+        self.assertEqual(
+            _coerce_message_body_to_bytes({"x": 1}),
+            b'{"x": 1}',
+        )
+
+    def test_list_of_bytes_joined(self) -> None:
+        self.assertEqual(_coerce_message_body_to_bytes([b"a", b"b"]), b"ab")
+
+    def test_generator_of_bytes_joined(self) -> None:
+        self.assertEqual(
+            _coerce_message_body_to_bytes(chunk for chunk in [b"a", b"b"]),
+            b"ab",
+        )
+
+    def test_unsupported_type_raises(self) -> None:
+        with self.assertRaises(TypeError):
+            _coerce_message_body_to_bytes(12345)

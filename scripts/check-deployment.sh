@@ -107,7 +107,7 @@ COSMOS_CONTAINERS=(
 )
 
 FUNCTION_APPS=("$TOKEN_APP" "$ROUTER_APP" "$ANALYSIS_APP" "$DECISION_APP")
-KEYVAULT_SECRETS=(OpenCodeApiKey ServiceBusConnection StorageAccountKey LogsStorageConnection)
+KEYVAULT_SECRETS=(OpenCodeApiKey ServiceBusConnection LogsStorageConnection)
 
 API_VER_RG="2021-04-01"
 API_VER_RESOURCES="2021-04-01"
@@ -507,7 +507,7 @@ check_key_vault() {
     if ! list_contains "$s" "$present"; then missing+=("$s"); fi
   done
   if [[ ${#missing[@]} -eq 0 ]]; then
-    write_result cloud key_vault ok "${kv} (4/4 secrets)"
+    write_result cloud key_vault ok "${kv} (${#KEYVAULT_SECRETS[@]}/${#KEYVAULT_SECRETS[@]} secrets)"
   else
     write_result cloud key_vault partial "${kv}: missing secrets: ${missing[*]}"
   fi

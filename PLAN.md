@@ -145,17 +145,26 @@ Goal: an observation flows from Service Bus through analysis to a decision.
 
 Goal: `local_agent` receives a real decision from Service Bus.
 
-- [ ] **4a. Publish a test decision to `final-decisions`**
-  - Craft a minimal Decision payload targeting `node_id: nixos`.
-  - Use `az servicebus message send` or the `decision_agent` itself.
+- [x] **4a. Publish a test decision to `final-decisions`**
+  - `scripts/publish-test-decision.sh` now wraps `az servicebus topic message send` with a body that matches `schemas.Decision` exactly (validated before send).
+  - The script accepts `--action`, `--severity`, `--node-id`, `--body-file`, and other Decision fields as flags.
+  - `scripts/phase4-verify.sh` is the orchestrator: it checks the `local-agent` subscription exists, optionally pokes the VM env via ssh, then publishes a `no_action` Decision and prints the `journalctl` command to run.
 
 - [ ] **4b. Watch `local_agent` receive and process it**
-  - `journalctl -u local_agent -f` on the VM.
+  - Run `bash scripts/phase4-verify.sh` from a host with `az` credentials.
+  - On the VM, run `ssh -p 2222 user@localhost 'journalctl -u local_agent -f | grep -E "decision|repair|receive"'`.
   - Verify the decision is parsed, the receive loop works, and the message is completed.
 
 - [ ] **4c. If `local_agent` receives but the repair loop is not ready**
   - This is expected — Phase 5 covers the repair loop.
   - For Phase 4, just confirming Service Bus receive works from the VM is the goal.
+
+#### Phase 4 helpers added in this session
+
+- `scripts/publish-test-decision.sh` — one-shot Decision publisher. Derives `SB_NAMESPACE` from `az account show` the same way `infrastructure/render-vm-env.sh` does. Validates the JSON body against the `Decision` schema before sending.
+- `scripts/phase4-verify.sh` — pre-flight + publish + journal hint. Use this for the first live verification.
+- `local_agent/src/local_agent/config.py` — added `decision_poll_base_seconds` (default 0.05) and `decision_poll_max_seconds` (default 1.0) so the receive-loop backoff is tunable from the VM env.
+- `local_agent/src/local_agent/runtime.py:decision_worker` — exponential backoff on persistent `receive_failed` errors. First error stays at base, subsequent consecutive errors double up to the cap. Reset to base on the next successful receive. Avoids burning CPU when the Service Bus namespace is unreachable.
 
 ### Phase 5 — Real repair loop from inside the VM
 

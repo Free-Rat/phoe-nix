@@ -258,6 +258,7 @@ RESOURCES_CACHE="$TMPDIR_RESULTS/resources-cache"
 
 # Fetch all resources in the RG once. Returns 0 if RG exists, 1 otherwise.
 # Writes a TSV of "type<TAB>name" lines to $RESOURCES_CACHE on success.
+# Parallel callers use flock to avoid clobbering each other mid-write.
 load_resources() {
   if [[ -s "$RESOURCES_CACHE" ]]; then
     return 0
@@ -265,12 +266,34 @@ load_resources() {
   if ! acquire_token; then
     return 1
   fi
-  az_http_get "$(resources_in_rg_url)"
-  if [[ "$AZ_HTTP_CODE" != "200" ]]; then
-    return 1
-  fi
-  printf '%s' "$AZ_BODY" | jq -r '.value[]? | "\(.type)\t\(.name)"' 2>/dev/null > "$RESOURCES_CACHE" || true
-  [[ -s "$RESOURCES_CACHE" ]]
+  (
+    umask 077
+    flock -n 200 || {
+      # Another worker is fetching; wait for it.
+      flock 200
+      [[ -s "$RESOURCES_CACHE" ]] && exit 0
+      exit 1
+    }
+    # Re-check inside the lock: another worker may have just written it.
+    if [[ -s "$RESOURCES_CACHE" ]]; then
+      exit 0
+    fi
+    az_http_get "$(resources_in_rg_url)"
+    if [[ "$AZ_HTTP_CODE" != "200" ]]; then
+      exit 1
+    fi
+    # Atomic write: build the cache in a temp file, then move into place so
+    # concurrent readers never see a half-written cache.
+    local tmp_cache
+    tmp_cache="$RESOURCES_CACHE.tmp.$$"
+    if printf '%s' "$AZ_BODY" | jq -r '.value[]? | "\(.type)\t\(.name)"' 2>/dev/null > "$tmp_cache"; then
+      mv "$tmp_cache" "$RESOURCES_CACHE"
+    else
+      rm -f "$tmp_cache"
+      exit 1
+    fi
+    [[ -s "$RESOURCES_CACHE" ]]
+  ) 200>"$TMPDIR_RESULTS/resources-cache.lock"
 }
 
 # Check whether a resource of given type+name exists in the cached list.

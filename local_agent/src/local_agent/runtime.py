@@ -339,21 +339,43 @@ async def run_runtime_once(
     }
 
 
+def _coerce_message_body_to_bytes(body: object) -> bytes:
+    """Normalise the various shapes a Service Bus message body can take.
+
+    azure-servicebus 7.x exposes ``message.body`` as a *generator* that yields
+    one or more ``bytes`` chunks; earlier SDKs and the in-process mock backend
+    return raw ``str``/``bytes``/``dict``.  Anything iterable that is not
+    already a known scalar type is treated as a chunked bytes payload.
+    """
+    if isinstance(body, (bytes, bytearray)):
+        return bytes(body)
+    if isinstance(body, str):
+        return body.encode("utf-8")
+    if isinstance(body, dict):
+        return json.dumps(body).encode("utf-8")
+    if isinstance(body, (list, tuple)):
+        return b"".join(_coerce_message_body_to_bytes(chunk) for chunk in body)
+    if hasattr(body, "__iter__"):
+        return b"".join(bytes(chunk) for chunk in body)
+    raise TypeError(f"unsupported Service Bus message body type: {type(body).__name__}")
+
+
 def _message_body_to_payload(message: object) -> dict[str, object]:
     if isinstance(message, dict):
         if "body" in message:
             body = message["body"]
             if isinstance(body, str):
                 return json.loads(body)
-            if isinstance(body, bytes):
-                return json.loads(body.decode("utf-8"))
+            if isinstance(body, (bytes, bytearray)):
+                return json.loads(bytes(body).decode("utf-8"))
         return message
-    body = message.get_body() if hasattr(message, "get_body") else getattr(message, "body", b"{}")
-    if isinstance(body, bytes):
-        return json.loads(body.decode("utf-8"))
-    if isinstance(body, str):
-        return json.loads(body)
-    return json.loads(bytes(body).decode("utf-8"))
+    body: object
+    if hasattr(message, "get_body"):
+        body = message.get_body()
+    else:
+        body = getattr(message, "body", b"{}")
+    raw = _coerce_message_body_to_bytes(body)
+    return json.loads(raw.decode("utf-8"))
 
 
 def _message_correlation_id(message: object) -> str:

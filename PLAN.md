@@ -234,7 +234,7 @@ Goal: GitHub Actions pipeline that validates and deploys.
 - `local_agent` is a single long-running process with internal async workers
 - Cloud authentication uses connection strings (Service Bus, Cosmos)
 - Cloud-side AI uses OpenCode Go API (`deepseek-v4-flash`)
-- Node-side repair uses Ollama on the VM host (`gemma4:e4b`)
+- Node-side repair uses Ollama on the VM host (`gemma3:4b`)
 - Shared config repo: `https://github.com/Free-Rat/phoe-nix-config`
 - Repair loop: `nixos-rebuild test` → retry with LLM → `nixos-rebuild switch`
 - Config changes are committed and pushed back to the shared repo

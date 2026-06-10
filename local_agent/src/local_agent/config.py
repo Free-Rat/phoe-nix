@@ -39,7 +39,7 @@ class LocalAgentConfig(BaseModel):
     config_file_path: str = "configuration.nix"
     repo_refresh_seconds: int = Field(default=300, ge=1)
     ollama_base_url: str = "http://10.0.2.2:11434"
-    ollama_model: str = "gemma4:e4b"
+    ollama_model: str = "gemma3:4b"
     ollama_timeout_seconds: float = Field(default=60.0, gt=0)
     repair_max_attempts: int = Field(default=3, ge=1)
     rebuild_test_command: str = "nixos-rebuild test"
@@ -85,7 +85,7 @@ def load_config(env: dict[str, str] | None = None) -> LocalAgentConfig:
         config_file_path=values.get("CONFIG_FILE_PATH", "configuration.nix"),
         repo_refresh_seconds=int(values.get("REPO_REFRESH_SECONDS", "300")),
         ollama_base_url=values.get("OLLAMA_BASE_URL", "http://10.0.2.2:11434"),
-        ollama_model=values.get("OLLAMA_MODEL", "gemma4:e4b"),
+        ollama_model=values.get("OLLAMA_MODEL", "gemma3:4b"),
         ollama_timeout_seconds=float(values.get("OLLAMA_TIMEOUT_SECONDS", "60")),
         repair_max_attempts=int(values.get("REPAIR_MAX_ATTEMPTS", "3")),
         rebuild_test_command=values.get("REBUILD_TEST_COMMAND", "nixos-rebuild test"),

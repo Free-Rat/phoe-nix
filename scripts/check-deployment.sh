@@ -274,10 +274,13 @@ load_resources() {
 }
 
 # Check whether a resource of given type+name exists in the cached list.
+# Azure resource type strings are case-insensitive but the casing is
+# non-deterministic (e.g. "serverFarms" vs "serverfarms"), so compare
+# case-insensitively.
 resource_exists() {
   local type="$1" name="$2"
   [[ -s "$RESOURCES_CACHE" ]] || return 1
-  awk -F'\t' -v t="$type" -v n="$name" '$1 == t && $2 == n { found=1 } END { exit !found }' "$RESOURCES_CACHE"
+  awk -F'\t' -v t="$type" -v n="$name" 'BEGIN{IGNORECASE=1} $1 == t && $2 == n { found=1 } END { exit !found }' "$RESOURCES_CACHE"
 }
 
 # Write one result line. Format: <group>|<name>|<status>|<detail>
@@ -504,6 +507,8 @@ check_app_plan() {
   if ! rg_exists_quick; then write_result cloud app_plan error "resource group ${RG} missing"; return; fi
   if ! load_resources; then write_result cloud app_plan error "could not list resources in RG"; return; fi
   local name="plan-${PROJECT_NAME}-${ENV}"
+  # resource_exists() is already case-insensitive, so this matches both
+  # "Microsoft.Web/serverfarms" and the actual "Microsoft.Web/serverFarms".
   if resource_exists "Microsoft.Web/serverfarms" "$name"; then
     write_result cloud app_plan ok "${name}"
   else

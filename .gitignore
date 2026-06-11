@@ -4,6 +4,10 @@ infrastructure/**/.terraform/
 infrastructure/*.tfstate
 infrastructure/*.tfstate.backup
 infrastructure/.terraform.lock.hcl
+# Subdirectory terraform state files (the top-level globs above do not match these).
+# Real state belongs in a remote backend (azurerm/azure backend), not in git.
+infrastructure/*/terraform.tfstate
+infrastructure/*/terraform.tfstate.backup
 
 # Environment files with secrets
 infrastructure/env
@@ -16,3 +20,6 @@ __pycache__/
 
 # Nix
 result
+# .build/ is the nix build output directory (e.g. zip packages under
+# .build/functions). Re-created on demand by `nix build`.
+.build/

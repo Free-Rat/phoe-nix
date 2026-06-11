@@ -23,3 +23,14 @@ result
 # .build/ is the nix build output directory (e.g. zip packages under
 # .build/functions). Re-created on demand by `nix build`.
 .build/
+
+# subagent/ holds session-scoped subagent working directories
+# (plan drafts, worker scratchpads, reviewer notes). Not part of the
+# project — re-created by pi-subagents on demand.
+subagent/
+
+# Stray uv artifact. The project does not use uv: the top-level
+# pyproject.toml is ruff configuration only and the service packages
+# are built via nix + a service-local pyproject.toml. If a future
+# change introduces uv for real, drop this line and commit uv.lock.
+uv.lock

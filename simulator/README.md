@@ -32,7 +32,7 @@ The repo now has enough cloud-side components that unit tests alone are not enou
 - blob-upload retry and recovery
 - malformed uploaded log blob
 - invalid AI response from OpenCode
-- future local-agent config-repair attempts driven by decision plus analysis context
+- current local-agent config-repair flow driven by decisions and the Git-backed `apply_config` path
 
 ## Run
 

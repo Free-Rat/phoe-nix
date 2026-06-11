@@ -1,32 +1,67 @@
 # Analysis Agent
 
-Consumes normalized logs or local observations from Service Bus topic `analysis-input`, builds an AI prompt, calls the OpenCode API, and publishes analysis output to `analysis-results`.
+Azure Function that consumes Service Bus messages from `analysis-input` (subscription `analysis-agent`), calls OpenCode, and publishes a JSON `AnalysisResult` to `analysis-results`.
 
-The current implementation still validates structured `AnalysisResult` payloads, but the intended proof-of-concept direction allows more raw analysis text so `local_agent` can interpret the problem locally. See `../proof-of-concept-direction.md`.
+## Inputs
 
-## Modules
+- `schemas.NormalizedLog` messages from `log_router`
+- `schemas.Observation` messages from `local_agent`
 
-- `config.py`: environment-backed runtime configuration
-- `keyvault.py`: Key Vault secret lookup through Managed Identity
-- `prompt_builder.py`: pure prompt construction functions for each message type
-- `ai_client.py`: pure request/response helpers plus OpenCode HTTP adapter
-- `message_handler.py`: orchestration for parse -> prompt -> model -> validated schema
+The handler uses the payload's `source` field to choose the schema: `local_agent` is parsed as `Observation`; everything else is treated as `NormalizedLog`.
+
+## Output
+
+- one Service Bus message per input message
+- body: `schemas.AnalysisResult` JSON
+- `content_type=application/json`
+- `application_properties.message_kind=analysis_result`
+- `message_id` preserved from the original input message when available
+
+If the model response is not valid JSON, the parser falls back to a text-derived `AnalysisResult` so the pipeline still produces a usable result.
+
+## Runtime and configuration
+
+This package runs inside the Azure Functions host (`src/analysis_agent/main.py` plus `function.json`); it is not a standalone daemon.
+
+Required settings:
+
+- `SERVICEBUS_CONNECTION`
+- `KEYVAULT_NAME`
+
+Function binding and AI defaults:
+
+- `SERVICEBUS_TOPIC_ANALYSIS_INPUT_NAME` (default `analysis-input`)
+- `SERVICEBUS_TOPIC_ANALYSIS_RESULTS_NAME` (default `analysis-results`)
+- `OPENCODE_API_KEY_SECRET` (default `OpenCodeApiKey`)
+- `OPENCODE_API_URL` (default `https://opencode.ai/zen/go/v1/chat/completions`)
+- `OPENCODE_MODEL` (default `deepseek-v4-flash`)
+- `AI_TIMEOUT_SECONDS` (default `30`)
+
+The OpenCode API key is read from Key Vault using `DefaultAzureCredential`.
+
+## Key files
+
+- `config.py`: environment-backed runtime config
+- `keyvault.py`: Key Vault secret lookup
+- `prompt_builder.py`: prompt construction for log and observation inputs
+- `ai_client.py`: OpenCode request/response helpers
+- `message_handler.py`: parse -> prompt -> model -> result pipeline
 - `main.py`: Azure Function entrypoint and Service Bus publisher
 
-## Message Flow
+## Local setup and validation
 
-1. Read message from the `analysis-input` topic subscription.
-2. Detect whether the payload is a `NormalizedLog` or `Observation`.
-3. Build a source-specific prompt.
-4. Fetch the OpenCode API key from Key Vault.
-5. Call the OpenCode API.
-6. Validate and enrich the AI output into `AnalysisResult` in the current implementation, or emit richer diagnosis text in the proof-of-concept direction.
-7. Publish the result to the `analysis-results` topic.
+For interactive work, use the package Nix shell:
 
-## Tests
+```bash
+cd analysis_agent && nix develop
+```
 
-Run from repo root:
+Repo-wide validation runs from the repository root:
 
 ```bash
 bash scripts/test.sh
 ```
+
+## Planned direction
+
+The proof-of-concept direction keeps `analysis_agent` text-forward, but the current implementation still emits structured `AnalysisResult` output. See `../proof-of-concept-direction.md`.

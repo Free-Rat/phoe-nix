@@ -1,79 +1,41 @@
 # Implementation Notes
 
-This repository now implements the cloud-side log ingestion and remediation decision pipeline through five connected packages: `schemas`, `token_service`, `log_service`, `log_router`, `analysis_agent`, and `decision_agent`.
+## Repository status
 
-It also includes `simulator`, a local deployment harness that runs the same service cores in process so the full pipeline can be validated without Azure.
+Phoe-nix currently implements a cloud-side ingestion / analysis / decision pipeline plus a local deployment simulator. The node-side `local_agent` runtime is also implemented: it publishes observations, consumes final decisions, enforces safety limits, and can run the current Git-backed `apply_config` repair path.
 
-The implemented code still reflects a more structured cloud-analysis pipeline than the intended proof-of-concept direction. The target direction is documented in `proof-of-concept-direction.md` and shifts more repair autonomy into `local_agent`.
+This document describes what is implemented today and what is still planned.
 
-## Functional Structure
+## Implemented today
 
-Each service follows the same shape:
+### Cloud-side pipeline
 
-1. `config.py` loads environment-backed settings.
-2. Pure helpers transform data into or out of shared schema models.
-3. Small adapter modules talk to Azure SDKs or HTTP APIs.
-4. `main.py` is a thin Azure Function or CLI boundary.
+- `token_service` validates node identity, reads the storage account key from Key Vault, and issues a short-lived write-only SAS URL for one blob path.
+- `log_service` tails the systemd journal, batches entries, retries uploads, and spools failed batches locally for replay.
+- `log_router` parses uploaded batches, normalizes each entry into `schemas.NormalizedLog`, and publishes one Service Bus message per entry on `analysis-input`.
+- `analysis_agent` consumes `NormalizedLog` and `Observation` messages from `analysis-input`, calls OpenCode, and publishes `AnalysisResult` JSON to `analysis-results`; if the model output is not valid JSON, it falls back to a text-derived result.
+- `decision_agent` consumes `analysis-results`, turns analysis into the current command-oriented remediation payload, stores an audit record in Cosmos DB, and publishes `Decision` messages to `final-decisions`.
+- `schemas` provides the shared Pydantic contracts used across services.
 
-This keeps the code testable because most tests only validate pure functions and orchestration with injected fakes.
+### Node-side runtime
 
-## Shared Schemas
+- `local_agent` builds observations, consumes decisions from `final-decisions`, and persists node-state and execution data.
+- It still supports legacy direct-command decisions.
+- For `apply_config` decisions, it refreshes `https://github.com/Free-Rat/phoe-nix-config`, edits `configuration.nix`, runs `nixos-rebuild test` with retries, then runs `nixos-rebuild switch`.
+- Successful repairs are committed and pushed back to Git.
+- The runtime records execution results, config snapshots, repair traces, node-state documents, and service-status documents in Cosmos DB.
+- The package includes both daemon-style runtime entrypoints and one-shot helpers used by tests and manual checks.
 
-The `schemas` package is the contract between services. The most important models are:
+### Simulator and validation
 
-- `NormalizedLog`: normalized log entry sent from `log_router` to `analysis_agent`
-- `Observation`: local-agent observation format, already supported by `analysis_agent`
-- `AnalysisResult`: current validated AI analysis output, likely to become more text-forward in the proof of concept
-- `Decision`: current remediation decision and audit payload, likely to evolve toward looser remediation intent plus analysis context
-- `ExecutionResult` and `NodeState`: future-facing models for the local agent and frontend
+- `simulator` runs the real service cores in process with fake Blob Storage, Service Bus, Cosmos DB, Key Vault, OpenCode, and local-agent execution.
+- It covers happy paths plus token issuance failures, upload retry / recovery, malformed blobs, invalid AI responses, and repair-loop traces.
+- Repo-level validation still centers on:
+  - `bash scripts/test.sh`
+  - `bash scripts/simulate-deployment.sh`
 
-## Service Boundaries
+## Planned direction
 
-### `token_service`
+The next proof-of-concept step is to make `local_agent` the primary config-repair engine on disposable VMs, with cloud analysis providing context rather than a fully prescribed patch. The intended topic flow remains `analysis-input` -> `analysis-results` -> `final-decisions`.
 
-- validates node identity
-- reads the storage account key from Key Vault
-- issues a write-only SAS URL scoped to one blob path
-
-### `log_service`
-
-- tails systemd journal
-- batches entries into one blob payload
-- retries failed uploads
-- spools failed batches to disk for later replay
-
-### `log_router`
-
-- parses uploaded log batches
-- normalizes each entry into `NormalizedLog`
-- publishes one Service Bus message per entry
-
-### `analysis_agent`
-
-- parses either `NormalizedLog` or `Observation`
-- builds a source-specific prompt
-- calls the OpenCode API
-- currently validates the returned JSON as `AnalysisResult`
-- in the proof of concept, may shift toward richer freeform analysis text
-
-### `decision_agent`
-
-- currently converts `AnalysisResult` into a concrete NixOS command
-- in the proof of concept, should move toward remediation intent for the local repair agent
-- writes the decision to Cosmos DB with a stable audit document
-- republishes the final decision payload for downstream consumers
-
-### `simulator`
-
-- executes the implemented services in real deployment order
-- uses in-memory fakes for Blob Storage, Service Bus, Cosmos DB, Key Vault, and OpenCode
-- validates that the current cloud-side pipeline works end to end
-- simulates local-agent execution of final decisions and stores execution results
-- should later simulate config-level repair attempts driven by decision plus analysis context
-- includes failure scenarios for token issuance, upload recovery, malformed blobs, and invalid AI output
-
-## Current Limits
-
-- current topic wiring follows the `analysis-input`, `analysis-results`, and `final-decisions` split used by the code and Terraform modules.
-- `local_agent` runtime, proof-of-concept config repair, and the frontend/TUI remain future phases.
-- `log_service` still has a Nix packaging issue on its `nix run` path even though its tested Python logic is implemented.
+Future work should be treated as planned, including broader operator-facing visibility tooling and any additional production hardening around the VM repair loop.

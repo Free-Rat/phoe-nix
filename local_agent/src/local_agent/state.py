@@ -1,7 +1,11 @@
+import json
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from schemas import NodeState
+
+RESOURCE_ALERT_THRESHOLD_PERCENT = 80
+RESOURCE_BUCKET_STEP_PERCENT = 5
 
 
 @dataclass(frozen=True)
@@ -12,8 +16,24 @@ class LocalAgentState:
     last_observation_hash: str | None = None
 
 
+def _bucket_resource_percent(value: int | None) -> int | None:
+    if value is None or value < RESOURCE_ALERT_THRESHOLD_PERCENT:
+        return None
+    return (value // RESOURCE_BUCKET_STEP_PERCENT) * RESOURCE_BUCKET_STEP_PERCENT
+
+
+def _meaningful_observation_fields(node_state: NodeState) -> dict[str, object]:
+    return {
+        "failed_units": sorted(set(node_state.failed_units)),
+        "restart_counts": {unit: count for unit, count in sorted(node_state.restart_counts.items()) if count > 0},
+        "disk_usage": dict(sorted(node_state.disk_usage.items())),
+        "memory_usage_bucket_percent": _bucket_resource_percent(node_state.memory_usage_percent),
+        "cpu_usage_bucket_percent": _bucket_resource_percent(node_state.cpu_usage_percent),
+    }
+
+
 def build_observation_hash(node_state: NodeState) -> str:
-    return node_state.model_dump_json()
+    return json.dumps(_meaningful_observation_fields(node_state), sort_keys=True)
 
 
 def has_significant_change(previous_hash: str | None, node_state: NodeState) -> bool:

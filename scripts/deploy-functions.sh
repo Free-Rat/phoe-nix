@@ -30,6 +30,16 @@ declare -A FUNCTION_NAMES=(
 BUILD_DIR="$ROOT_DIR/.build/functions"
 mkdir -p "$BUILD_DIR"
 
+AZ_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+
+sync_function_triggers() {
+  local function_name="$1"
+  az rest \
+    --method post \
+    --url "https://management.azure.com/subscriptions/${AZ_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${function_name}/syncfunctiontriggers?api-version=2024-04-01" \
+    --only-show-errors >/dev/null
+}
+
 export_requirements() {
   local service_path="$1"
   local output_path="$2"
@@ -126,4 +136,6 @@ EOF
     --name "$FUNCTION_NAME" \
     --src "$ARCHIVE_PATH" \
     --build-remote true
+
+  sync_function_triggers "$FUNCTION_NAME"
 done

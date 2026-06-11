@@ -1,434 +1,79 @@
-# Infrastructure Overview
+# Infrastructure overview
 
-This document describes the Azure resources deployed via Terraform
+This directory contains the Terraform-managed Azure infrastructure for the current cloud pipeline. It provisions the cloud side only; `local_agent` runs on the node/VM and is not deployed by these modules.
 
-## 1. High-level architecture
+For the broader planned VM repair loop, see `../proof-of-concept-direction.md`.
 
-The solution is event-driven and cloud-native. Nodes request temporary upload permission, upload logs directly to Azure Blob Storage, and the rest of the pipeline processes the logs asynchronously.
+## Current flow
 
-The intended proof-of-concept direction is more agentic than a simple command pipeline: cloud stages analyze and route problems, while the on-node `local_agent` is expected to become the main config-repair engine on disposable VMs. See `../proof-of-concept-direction.md`.
+1. `token_service` issues a short-lived, path-scoped SAS URL.
+2. The node uploads logs to Blob Storage.
+3. Blob creation triggers the router function.
+4. The router publishes normalized events to Service Bus topic `analysis-input`.
+5. `analysis_agent` consumes `analysis-input`, calls OpenCode, and publishes to `analysis-results`.
+6. `decision_agent` consumes `analysis-results` and publishes remediation intent to `final-decisions`.
+7. `local_agent` consumes `final-decisions` on the node/VM.
 
-Cloud-side AI continues to use the OpenCode Go API. Only the on-node repair loop is expected to use a local Ollama model.
+## Terraform layout
 
-```text
-NixOS Node Log Service -> Token Service -> SAS token
-NixOS Node Log Service -> Azure Blob Storage -> Azure Function (Router)
-Azure Function -> Service Bus Topic:analysis-input -> Analysis Agent -> Service Bus Topic:analysis-results -> Decision Agent -> Service Bus Topic:final-decisions -> NixOS Node Local Agent
-NixOS Node Local Agent -> Cosmos DB
-```
+The infrastructure is split into four module directories, each with its own local backend state (`backend "local"`). Apply order matters because later modules read resources created by earlier ones.
 
-## 2. Azure resources
-
-### 2.1 Resource Group
-
-**Purpose:** Logical container for all resources used by the project.
-
-**Contains:**
-
-* Storage Account
-* Azure Functions
-* Service Bus Namespace
-* Cosmos DB Account
-* Key Vault
-* Application Insights
-* App Service / Container App for frontend and/or agent services
-
-**Notes:**
-
-* Separate resource groups can be used for `dev` and `prod` environments.
-* Keep naming consistent, for example: `rg-project-healer-dev`.
-
----
-
-### 2.2 Storage Account (Blob Storage)
-
-**Purpose:** Stores raw logs uploaded by NixOS nodes.
-
-**Usage:**
-
-* Nodes upload log files directly using a short-lived SAS token.
-* Blob Storage triggers downstream processing through an Azure Function.
-
-**Recommended configuration:**
-
-* Private access if possible
-* Container such as `logs`
-* Lifecycle rules for log retention and cleanup
-* Versioning disabled unless needed
-
-**Data stored:**
-
-* Raw log files
-* Optional processed artifacts
-
----
-
-### 2.3 Token Service
-
-**Purpose:** Issues temporary upload permissions for nodes.
-
-**Implementation:** Azure Function (HTTP trigger, already provisioned as `func-project-healer-dev-token`).
-
-**Responsibilities:**
-
-* Authenticate the node
-* Generate a unique blob path: `logs/{node_id}/{uuid}`
-* Generate SAS tokens scoped to that specific path only (write-only, 5-minute expiry, blob-level)
-* Prevent cross-node access — each node can only write to its own path
-
-**Why it exists:**
-
-* Prevents direct public access to Blob Storage
-* Removes the need for a central log-ingestion service
-* Path scoping ensures node A can never overwrite node B's logs
-
----
-
-### 2.4 Azure Functions
-
-**Purpose:** Serverless compute for event-driven processing.
-
-**Suggested functions:**
-
-* **Token Function**: generates SAS tokens
-* **Router Function**: triggered when a new blob is created, normalizes log metadata and sends messages to Service Bus
-
-**Triggers:**
-
-* HTTP trigger for token generation
-* Blob trigger or Event Grid trigger for new log files
-
-**Benefits:**
-
-* Low operational overhead
-* Easy scaling
-* Good fit for asynchronous pipelines
-
----
-
-### 2.5 Azure Service Bus
-
-**Purpose:** Asynchronous communication backbone.
-
-**Recommended topology:**
-
-* A single Service Bus namespace with multiple topics:
-  * **Topic `analysis-input`** – normalized logs and local observations
-  * **Topic `analysis-results`** – diagnosis output from `analysis_agent`
-  * **Topic `final-decisions`** – remediation intent for `local_agent`
-* No Queue Storage is needed; topics with subscriptions cover all communication patterns.
-
-**Usage:**
-
-* Router publishes normalized log events to the `analysis-input` topic
-* Analysis Agent subscribes to `analysis-input` and publishes results to `analysis-results`
-* Decision Agent subscribes to `analysis-results`
-* Local Agent pulls decisions from the `final-decisions` topic subscription
-
-**Direct connection:**
-
-* Get the connection string via a Shared Access Policy.
-* Services authenticate using Managed Identity where possible; fall back to connection string from Key Vault only when necessary.
-
-**Why Service Bus:**
-
-* Reliable delivery
-* Retry support
-* Dead-letter queues
-* Decouples pipeline stages
-
----
-
-### 2.6 Analysis Agent
-
-**Purpose:** Consumes log events and detects anomalies or configuration issues.
-
-**Implementation options:**
-
-* Azure Functions
-* Container App
-* AKS workload
-
-**Responsibilities:**
-
-* Parse normalized logs
-* Detect suspicious or invalid configuration changes
-* Call AI model provider if needed
-* Produce structured analysis output
-
----
-
-### 2.7 Decision Agent
-
-**Purpose:** Converts analysis results into a remediation decision.
-
-**Responsibilities:**
-
-* Decide which node should act and what remediation intent should be attempted
-* Create a decision record that gives the local agent enough context to attempt repair
-* Store the decision for auditing
-
-**Output:**
-
-* Decision message sent to Service Bus topic `final-decisions`
-
----
-
-### 2.8 Action Agent
-
-**Purpose:** Runs on each NixOS node as a genuine agent that participates bidirectionally in the knowledge pipeline.
-
-**Modes of operation:**
-
-1. **Observe** — Proactively monitors local node state (services, disk, NixOS generation) and publishes observations to the Service Bus `analysis-input` topic. These observations flow into the Analysis Agent alongside normalized logs, enriching the AI's understanding with local context.
-2. **Execute** — Pulls decisions from the Service Bus `final-decisions` topic subscription, reads the related analysis context, and attempts local repair.
-3. **Report** — After execution, reports not just success/failure but full node context, config changes, rebuild outputs, and Git revision changes to Cosmos DB — closing the feedback loop.
-
-**Why it is an agent, not a simple executor:**
-
-* A simple executor is unidirectional — it receives commands and returns exit codes.
-* The Local Agent is a participant in a shared knowledge pipeline — it proactively contributes observations and reports rich context.
-* This bidirectional communication allows the Analysis Agent to produce better decisions (e.g., knowing which NixOS generation to roll back to, not just "rollback").
-* Observations from nodes and logs from the cloud both feed into the `analysis-input` topic, making the pipeline genuinely agentic.
-
-**Important note:**
-
-* In the current proof-of-concept direction, the agent may make broader config changes because the nodes are disposable VMs. Visibility and traceability matter more than strict safety.
-* For VM proof-of-concept setups, Ollama should be reached from the guest over private host/VM HTTP rather than a public endpoint.
-
----
-
-### 2.9 Cosmos DB
-
-**Purpose:** Stores system state, decisions, execution results, and audit history.
-
-**Data stored:**
-
-* Node state
-* Detected incidents
-* Decision history
-* Action execution results
-* Timestamps and correlation IDs
-
-**Why Cosmos DB:**
-
-* Flexible schema
-* Fast reads/writes
-* Good fit for event and state records
-
----
-
-### 2.10 Key Vault
-
-**Purpose:** Secure storage for secrets and credentials.
-
-**Stored items:**
-
-* Service Bus connection strings (Shared Access Policy), if Managed Identity is not used for a given service
-* Cosmos DB secrets, if needed
-* OpenCode Go API key
-* Storage account keys, if SAS generation requires them
-
-**Access pattern:**
-
-* Azure Functions and other services access secrets in Key Vault via Managed Identity.
-* No secrets are embedded in code or configuration files.
-
-**Recommended practice:**
-
-* Prefer Managed Identity for all Azure-internal communication
-* Store only external secrets (e.g., OpenCode Go API key) in Key Vault
-
----
-
-### 2.11 Managed Identity
-
-**Purpose:** Identity mechanism for Azure services to authenticate without embedded secrets.
-
-**Used by:**
-
-* Azure Functions
-* Token Service
-* Frontend backend
-* Any service accessing Storage, Service Bus, or Cosmos DB
-
-**Benefits:**
-
-* Improves security
-* Reduces secret management burden
-
----
-
-### 2.12 Application Insights / Azure Monitor (later)
-
-**Purpose:** Observability and diagnostics.
-
-**Tracks:**
-
-* Function execution logs
-* Service Bus message flow
-* Failures and retries
-* Latency and throughput
-* Agent health
-
-**Why it matters:**
-
-* Helps demonstrate the distributed nature of the system
-* Useful for debugging and evaluation
-
-**TODO:** Define alerting rules and dashboards.
-
----
-
-### 2.13 Frontend hosting (later)
-
-**Purpose:** Minimal UI for monitoring the system.
-
-**Implementation options:**
-
-* Azure App Service
-* Azure Container Apps
-* Streamlit hosted in a container
-
-**UI features:**
-
-* Node status
-* Detected incidents
-* Applied fixes
-* Recent logs and decisions
-
----
-
-### 2.14 Container Registry (optional) (later)
-
-**Purpose:** Stores container images if any service is containerized.
-
-**Used for:**
-
-* Analysis Agent
-* Decision Agent
-* Action Agent
-* Streamlit frontend
-
-**Alternative:**
-
-* Not required if everything runs as Azure Functions
-
----
-
-### 2.15 Azure AI service – OpenCode Go API
-
-**Purpose:** AI-assisted log analysis and remediation suggestions.
-
-**Provider:**
-
-* OpenCode Go API is the AI provider.
-* The API key is stored in Azure Key Vault.
-* Azure Functions access the key via Managed Identity – no hardcoded secrets.
-
-**TODO:** Evaluate whether Azure OpenAI is needed as a fallback provider.
-
----
-
-## 3. Data flow between resources
-
-1. A NixOS node asks the Token Service for a temporary upload token.
-2. The Token Service returns a short-lived SAS token.
-3. The node uploads logs directly to the unique blob path provided by the Token Service.
-4. Blob creation triggers an Azure Function.
-5. The Router Function normalizes the event and sends it to Service Bus Topic `analysis-input`.
-6. The Analysis Agent consumes the message, calls OpenCode Go API (key from Key Vault via Managed Identity), and publishes analysis output to Topic `analysis-results`.
-7. The Decision Agent consumes the analysis result, creates a remediation plan, and publishes to Topic `final-decisions`.
-8. The Local Agent on the node pulls the decision and applies the fix.
-9. Results are stored in Cosmos DB and shown in the frontend.
-
-## 4. Security considerations
-
-* Use short-lived SAS tokens only.
-* Restrict SAS permissions to write-only.
-* Prefer Managed Identity over access keys.
-* Keep secrets in Key Vault; access via Managed Identity.
-* Restrict Action Agent to a small set of safe, predefined remediation commands.
-* Use separate environments for development and production.
-* Direct connections to Service Bus use the connection string (Shared Access Policy); wherever possible, prefer Managed Identity instead.
-
-## 5. CI/CD
-
-* CI/CD will be delivered by Nix.
-* Implementation will be done in a later phase.
-
-**TODO:** Define the Nix-based CI/CD pipeline (build, test, deploy stages).
-
-## 6. Error handling
-
-**TODO:** Define error handling strategy for the pipeline:
-
-* Retry policies for each agent (Analysis, Decision, Local).
-* Dead-letter queue processing and alerting.
-* Idempotency guarantees.
-* Fallback behaviour when OpenCode Go API is unavailable.
-
-## 7. Suggested naming convention
-
-Example:
-
-* `rg-project-healer-dev`
-* `stprojecthealerdev`
-* `sb-project-healer-dev`
-* `cosmos-project-healer-dev`
-* `kv-project-healer-dev`
-* `func-project-healer-dev`
-
-## 8. Terraform module structure
-
-The infrastructure is split into 4 modules with **separate state files**, enabling safe `terraform destroy` of stateless resources without touching data.
-
-```
-infrastructure/
-├── 01-networking/       # Resource group (foundation)
-├── 02-cosmos/           # Cosmos DB account, database, containers (stateful data)
-├── 03-blob-storage/     # Logs storage account, container, lifecycle policy (stateful data)
-├── 04-stateless/        # Functions, Service Bus, Key Vault, App Insights, RBAC
-├── apply.sh             # terraform init + apply in order
-└── destroy.sh           # terraform init + destroy in reverse order
-```
-
-### Apply order: `01 → 02 → 03 → 04`
-
-Networking first (resource group), then stateful data stores (Cosmos DB, Blob Storage), then stateless compute.
-
-### Destroy order: `04 → 03 → 02 → 01`
-
-Stateless things first (functions, service bus), then data stores, then the resource group last.
-
-### Safe destroy patterns
-
-| What you want to destroy | Command |
+| Module | What it creates |
 |---|---|
-| Stateless only (functions, service bus, key vault, app insights) | `cd 04-stateless && terraform destroy` |
-| Blob storage (logs data) | `cd 03-blob-storage && terraform destroy` |
-| Cosmos DB (observations, node state, decisions, execution results, config snapshots, repair traces, service status) | `cd 02-cosmos && terraform destroy` |
-| Everything | `./destroy.sh` |
+| `01-networking` | Resource group only |
+| `02-cosmos` | Cosmos DB account, SQL database `project-healer`, and containers: `observations`, `node-state-current`, `decisions`, `execution-results`, `config-snapshots`, `repair-traces`, `service-status` |
+| `03-blob-storage` | Logs storage account, private `logs` container, and a 30-day cleanup policy |
+| `04-stateless` | Service Bus namespace, 3 topics, 3 subscriptions, Shared Access authorization rule, Key Vault (`OpenCodeApiKey`, `ServiceBusConnection`, `StorageAccountKey`, `LogsStorageConnection`), Application Insights, user-assigned identity, Linux service plan, function storage account, 4 Linux Function Apps (`token`, `router`, `analysis`, `decision`), and 6 RBAC role assignments |
 
-### Cross-module references
+## Prerequisites
 
-Each module uses `data` sources to look up resources from prior modules by name:
+- Azure CLI authenticated and subscribed to the target subscription.
+- Terraform available locally, or use `nix develop` from `infrastructure/`.
+- If you use the Nix shell, it sources the repo-root `.env` automatically.
+- Repo-root `.env` populated with at least:
+  - `TF_VAR_opencode_api_key`
+  - `TF_VAR_node_api_key`
+- Keep secrets out of source control; Terraform stores the OpenCode API key and other sensitive values in Azure resources, not in this file.
 
-- `02-cosmos`, `03-blob-storage`, `04-stateless` all reference `data.azurerm_resource_group.main` from `01-networking`
-- `04-stateless` references `data.azurerm_cosmosdb_account.main` and `data.azurerm_cosmosdb_sql_database.main` from `02-cosmos`
-- `04-stateless` references `data.azurerm_storage_account.logs` from `03-blob-storage`
+Notes:
+- `node_api_key` is required by `04-stateless` and the token service.
+- Module defaults do not all point to the same Azure region: `01-networking`, `02-cosmos`, and `03-blob-storage` default to `polandcentral`, while `04-stateless` defaults to `swedencentral`. Override `location` if you want a single region.
 
-This means prior modules must be applied before later ones, but later modules can be destroyed independently.
+## Apply flow
 
-### Per-module contents
+From `infrastructure/`:
 
-| Module | Resources |
-|---|---|
-| `01-networking` | Resource group |
-| `02-cosmos` | Cosmos DB account, SQL database (`project-healer`), containers: `observations`, `node-state-current`, `decisions`, `execution-results`, `config-snapshots`, `repair-traces`, `service-status` |
-| `03-blob-storage` | Storage account (`stprojecthealerdev`), container (`logs`), lifecycle policy (cleanup after 30 days) |
-| `04-stateless` | Service Bus namespace + topics + subscriptions, Key Vault + secrets, App Insights, managed identity, app service plan, function storage account, 4 Linux Function Apps (token, router, analysis, decision), 7 RBAC role assignments |
+```bash
+nix develop
+az login
+az account set --subscription <subscription-id>
+./apply.sh
+```
 
-## 9. Summary
+`apply.sh` runs `terraform init` and `terraform apply -auto-approve` in this order:
 
-This infrastructure supports a fully event-driven distributed system where NixOS nodes can upload logs securely, the cloud pipeline can analyze them asynchronously, and local agents can apply self-healing actions automatically.
+`01-networking` → `02-cosmos` → `03-blob-storage` → `04-stateless`
+
+That order is required because:
+- `02-cosmos`, `03-blob-storage`, and `04-stateless` read the resource group from `01-networking`
+- `04-stateless` also reads Cosmos DB and Blob Storage created by earlier modules
+
+## Destroy flow
+
+`destroy.sh` runs `terraform init` and `terraform destroy -auto-approve` in reverse order:
+
+`04-stateless` → `03-blob-storage` → `02-cosmos` → `01-networking`
+
+Use the module-specific destroy commands when you only want part of the stack removed:
+
+- `cd 04-stateless && terraform destroy` removes the function apps, Service Bus, Key Vault, Application Insights, identity, service plan, and function storage account.
+- `cd 03-blob-storage && terraform destroy` removes the logs storage account and retained log data.
+- `cd 02-cosmos && terraform destroy` removes Cosmos DB data, including observations, decisions, execution results, snapshots, repair traces, and service status.
+- `./destroy.sh` removes everything in safe reverse order.
+
+## Safety notes
+
+- `02-cosmos` and `03-blob-storage` are stateful; destroy them only when you are willing to lose stored data.
+- `04-stateless` still contains secrets and secret references. Keep them in Azure Key Vault and do not hardcode values in Terraform or docs.
+- The apply/destroy scripts use `-auto-approve`; run them intentionally.
+- Do not apply modules out of order, because later modules depend on names and data sources created by earlier ones.

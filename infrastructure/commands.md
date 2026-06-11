@@ -1,151 +1,114 @@
 # Azure POC bring-up runbook
 
-Use the Nix shell for every Azure-side step so the same environment variables and toolchain are loaded each time.
+Use the Nix shell for Azure-side work so the same toolchain and repo-root `.env` are loaded each time.
 
-## 0. Prepare `../.env`
+## Prerequisites
 
 Create a repo-root `.env` file (it is already gitignored) with at least:
 
 ```dotenv
 TF_VAR_opencode_api_key=sk-example
 TF_VAR_node_api_key=replace-with-a-shared-node-api-key
-# Optional overrides; these defaults are exported by `nix develop` when omitted.
+# Optional overrides; the shell provides these defaults when omitted.
 PROJECT_NAME=project-healer
 ENV=dev
 ```
 
 Notes:
 - `TF_VAR_opencode_api_key` is required by Terraform.
-- `TF_VAR_node_api_key` is required for this POC. Terraform, `render-vm-env.sh`, and `smoke-test-poc.sh` now all fail fast when it is empty.
+- `TF_VAR_node_api_key` is required for the POC. Terraform, `render-vm-env.sh`, and `smoke-test-poc.sh` all fail fast when it is empty.
 - `nix develop` sources `../.env` automatically and exports derived names such as `RG`, `COSMOS_ACCOUNT`, `TOKEN_APP`, `ROUTER_APP`, `ANALYSIS_APP`, and `DECISION_APP`.
-- Explicit `SB_NAMESPACE` and `AZURE_TENANT_SUFFIX` overrides stay authoritative. When they are unset and Azure account context already exists, the shell/scripts derive the tenant suffix from `az account show --query tenantId -o tsv` using the same first-6-characters rule as Terraform.
+- If `SB_NAMESPACE` is unset, the shell and helper scripts derive it from `az account show --query tenantId -o tsv` using the same first-6-characters rule as Terraform. `AZURE_TENANT_SUFFIX` can override that derivation.
 
-## 1. Enter the Azure shell
+Before running the Azure helpers, log in and select the target subscription:
 
 ```bash
-cd infrastructure
-nix develop
 az login
 az account set --subscription <subscription-id>
 ```
 
-`nix develop` remains best-effort only: it does **not** fail if you have not logged into Azure yet. If you enter the shell before `az login`, either log in before running the helper scripts or set `SB_NAMESPACE` / `AZURE_TENANT_SUFFIX` explicitly.
+You can open the shell before `az login`, but the helper scripts below need Azure authentication.
 
-Check the derived shell variables if you want:
+## 1. Enter the infrastructure shell
 
 ```bash
-printf '%s\n' "$PROJECT_NAME" "$ENV" "$RG" "$SB_NAMESPACE" "$COSMOS_ACCOUNT" "$TOKEN_APP" "$ANALYSIS_APP"
+cd infrastructure
+nix develop
 ```
 
-## 2. Apply infrastructure
+## 2. Apply Terraform
 
 ```bash
 ./apply.sh
 ```
 
-What this now automates for you:
-- Token Function receives `NODE_API_KEY` from `TF_VAR_node_api_key`
-- Analysis Function receives:
-  - `OPENCODE_API_URL=https://opencode.ai/zen/go/v1/chat/completions`
-  - `OPENCODE_MODEL=deepseek-v4-flash`
+This applies `01-networking` → `02-cosmos` → `03-blob-storage` → `04-stateless`.
+It provisions the resource group, Cosmos DB, Blob Storage, Service Bus topics/subscriptions, Key Vault, App Insights, and the four Function Apps.
 
-You no longer need a manual `az functionapp config appsettings set` step for the OpenCode URL/model.
+## 3. Deploy the Function App code
 
-## 3. Deploy function code
-
-From repo root:
+From the infrastructure shell:
 
 ```bash
-cd /home/freerat/projects/phoe-nix
-./scripts/deploy-functions.sh "$RG" "$ENV" token router analysis decision
+bash ../scripts/deploy-functions.sh "$RG" "$ENV" token router analysis decision
 ```
 
-This deploy step is safe to rerun as part of an explicit deployment flow:
-- rerun it after Python/function code changes
-- rerun it after recreating Function Apps
-- rerun it after Terraform changes that replace a Function App
+This stages zip artifacts under `.build/functions/` and deploys the current Python code for token/router/analysis/decision.
 
-Treat it as deployment-idempotent enough for the POC, but **do not** run it automatically on every `nix develop`; entering a dev shell should not mutate Azure.
-
-## 4. Render the VM env files from Azure
-
-Render the exact env blocks the VM needs (requires `NODE_API_KEY` or `TF_VAR_node_api_key` to be set first):
+## 4. Render the VM env files
 
 ```bash
-cd /home/freerat/projects/phoe-nix
-bash infrastructure/render-vm-env.sh
+bash ./render-vm-env.sh --write /tmp/phoe-nix-vm-env
 ```
 
-Write ready-to-copy files into a temp directory:
+Use `--cosmos off` if you want the VM to stay off Cosmos while proving the Azure message path first.
 
-```bash
-bash infrastructure/render-vm-env.sh --write /tmp/phoe-nix-vm-env
-```
+The script requires `NODE_API_KEY` or `TF_VAR_node_api_key`.
+If `SB_NAMESPACE` is unset, it derives the namespace name from the logged-in Azure tenant.
 
-That produces:
-- `/tmp/phoe-nix-vm-env/log-service.env`
-- `/tmp/phoe-nix-vm-env/local-agent.env`
-
-If you want to keep Cosmos disabled on the VM while proving the Azure message path first:
-
-```bash
-bash infrastructure/render-vm-env.sh --cosmos off --write /tmp/phoe-nix-vm-env
-```
-
-## 5. Install the rendered env files on the VM
-
-Copy the generated files into the VM's persistent `/etc/phoe-nix/*.env` files:
+## 5. Install the env files on the VM
 
 ```bash
 scp -P 2222 /tmp/phoe-nix-vm-env/log-service.env user@localhost:/tmp/log-service.env
 scp -P 2222 /tmp/phoe-nix-vm-env/local-agent.env user@localhost:/tmp/local-agent.env
 
-ssh -p 2222 user@localhost 'sudo mv /tmp/log-service.env /etc/phoe-nix/log-service.env && sudo mv /tmp/local-agent.env /etc/phoe-nix/local-agent.env && sudo systemctl restart log_service local_agent && sudo systemctl status log_service local_agent --no-pager'
+ssh -p 2222 user@localhost '
+  sudo install -d -m 755 /etc/phoe-nix &&
+  sudo install -m 600 /tmp/log-service.env /etc/phoe-nix/log-service.env &&
+  sudo install -m 600 /tmp/local-agent.env /etc/phoe-nix/local-agent.env &&
+  sudo systemctl restart log_service local_agent &&
+  sudo systemctl status log_service local_agent --no-pager
+'
 ```
 
-## 6. Run live Azure smoke checks
+These files contain secrets; keep them root-owned on the VM.
 
-Run the scripted smoke checks from the repo root:
+## 6. Run live smoke checks
 
 ```bash
-cd /home/freerat/projects/phoe-nix
-bash infrastructure/smoke-test-poc.sh --node-id nixos
+bash ./smoke-test-poc.sh --node-id nixos
 ```
 
-The smoke script checks (and it also requires `NODE_API_KEY` / `TF_VAR_node_api_key`):
-- function apps exist
-- deployed functions are visible in Azure
-- Service Bus topics exist
-- Cosmos account exists
-- analysis app OpenCode URL/model settings match the expected values
-- token service returns a SAS payload for an authenticated node request
+This checks Function Apps, deployed functions, Service Bus topics/subscriptions, Cosmos, the analysis app OpenCode settings, and a token-service request.
 
-## 7. Optional manual spot checks
+## Optional spot checks
 
-Watch VM services:
+Keep an eye on the Ollama model setting: `local_agent` defaults to `OLLAMA_MODEL=gemma3:4b`, while `infrastructure/render-vm-env.sh` still writes `OLLAMA_MODEL=gemma4:e4b`. If model selection looks wrong on the VM, check which side is supplying the override.
+
+Watch the VM services:
 
 ```bash
 ssh -p 2222 user@localhost 'journalctl -u log_service -u local_agent -f'
 ```
 
-Confirm host Ollama reachability from the guest:
+Confirm Ollama reachability from the guest:
 
 ```bash
 ssh -p 2222 user@localhost 'curl http://10.0.2.2:11434/api/tags'
 ```
 
-## 8. Current manual steps that still remain
+## Safety notes
 
-The Azure-side automation is improved, but these are still manual:
-- `az login`
-- `az account set --subscription ...`
-- `./apply.sh`
-- `./scripts/deploy-functions.sh ...`
-- copying the rendered env files into the VM
-- restarting the VM services
-
-## 9. POC notes
-
-- The analysis client now speaks to the OpenAI-compatible OpenCode Go chat-completions endpoint and uses `deepseek-v4-flash` by default.
-- The current Service Bus topology is still single-subscription for `local-agent`, which is fine for a single disposable VM POC but not for a real multi-node rollout.
-- `servicebus_sku` is now intentionally limited to `Standard` or `Premium` because the design depends on topics.
+- `TF_VAR_opencode_api_key` and `TF_VAR_node_api_key` are sensitive; do not commit them.
+- `./apply.sh` is for bring-up; only run `./destroy.sh` when you explicitly want to tear the stack down.
+- Azure login and subscription selection are required before rendering VM envs or running smoke checks unless you provide explicit `SB_NAMESPACE` and `AZURE_TENANT_SUFFIX` values.

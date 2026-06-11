@@ -1,83 +1,34 @@
 # Testing Plan
 
-## Goals
+## Scope
 
-Catch correctness bugs, integration mismatches, and obvious repair-loop failures before anything reaches a real node or Azure environment.
+Phoe-nix currently has a structured cloud-side pipeline, a node-side `local_agent` runtime, and an in-process simulator. Test the implemented flow first; label future POC ideas as planned material.
 
-Because the current target is a proof of concept on disposable VMs, testing should prioritize traceability and loop behavior over production-grade safety guarantees.
+## Canonical verification commands
 
-## Test Layers
+- `bash scripts/test.sh` — main repo test command. It runs unittest discovery for each service package that has a `tests/` directory (`token_service`, `log_service`, `log_router`, `analysis_agent`, `decision_agent`, `local_agent`, `simulator`). `schemas/` does not have a standalone test suite today.
+- `bash scripts/simulate-deployment.sh` — in-process end-to-end exercise of the current pipeline. Use this when changing message shapes, routing, analysis/decision flow, or `local_agent` repair behavior.
+- `bash infrastructure/smoke-test-poc.sh --node-id nixos` — optional live Azure smoke check after deployment. It requires Azure CLI, deployed resources, and `NODE_API_KEY` / `TF_VAR_node_api_key`.
 
-### 1. Schema Contract Tests
+## What to cover in tests
 
-- Validate every shared schema with minimal and maximal payloads.
-- Validate timestamp parsing, enum rejection, optional field defaults, and backward-compatible field additions.
-- Add round-trip tests: model -> JSON -> model.
+### Contracts and payloads
 
-### 2. Pure Function Unit Tests
+- Validate valid and invalid payloads, required-field omissions, and round-trips for shared message shapes.
+- When a shared schema changes, update both the producing and consuming package tests plus the simulator assertions.
 
-For every service, test pure helpers with normal and adversarial inputs.
+### Service unit tests
 
-`token_service`
-- auth header case-insensitivity
-- node/body mismatch
-- missing body
-- SAS scope, expiry, uniqueness, permission narrowing
+- `token_service`: node/API-key auth, invalid JSON, node-id mismatch, and SAS path/scope/expiry generation.
+- `log_service`: batch flush threshold, retry exhaustion, spool write/replay, and payload serialization.
+- `log_router`: blob payload parsing, journal-field normalization, timestamp parsing, missing `MESSAGE` rejection, and priority conversion.
+- `analysis_agent`: OpenAI-compatible request shape, response extraction, markdown-fence stripping, fallback from raw text, missing-field defaults, and confidence normalization.
+- `decision_agent`: suggested-action normalization, `restart_service` command mapping, `apply_config` staying command-free, and audit-document shape.
+- `local_agent`: observation publishing, Service Bus receive/complete helpers, cooldown and remediation limits, `no_action` / wrong-node gating, `apply_config` repair-loop retries, and persistence/reporting documents.
 
-`log_service`
-- empty entry filtering
-- batch threshold flush
-- interval flush
-- shutdown flush
-- spool file replay ordering
-- retry exhaustion
-- stale spool plus new buffer interaction
+### Simulator coverage
 
-`log_router`
-- malformed batch payload shape
-- missing `MESSAGE`
-- missing timestamp
-- invalid priority
-- unicode content
-- large batches
-
-`analysis_agent`
-- prompt generation for log and observation sources
-- AI JSON wrapped in markdown fences
-- invalid AI JSON
-- missing required AI fields
-- unsupported enum values from AI
-- fallback unit behavior
-- richer raw-text analysis output if the schema is relaxed
-
-`decision_agent`
-- command mapping for each action
-- invalid `restart_service` without target unit
-- `no_action` audit behavior
-- idempotency-key stability
-- looser remediation-intent payloads if command-only decisions are relaxed
-
-`local_agent`
-- cooldown logic
-- remediation-per-hour ceiling
-- target-node filtering
-- command whitelist enforcement
-- state-hash change detection
-- reporter summaries with and without failures remaining
-- config edit capture and reporting
-- rebuild retry loop behavior
-- decision plus analysis-context handling
-
-### 3. Service Boundary Tests
-
-- HTTP request/response handling in `token_service`
-- blob-trigger style parsing in `log_router`
-- Service Bus payload parsing in `analysis_agent`, `decision_agent`, and `local_agent`
-- Cosmos document shape for decision and execution-result writes
-
-### 4. Simulator Integration Tests
-
-Required scenarios:
+Keep the scenarios short and representative:
 
 - log happy path
 - observation happy path
@@ -85,59 +36,29 @@ Required scenarios:
 - upload failure -> retry recovery
 - malformed blob
 - invalid AI response
-- repeated decision delivery to local agent
-- `no_action` decision path
-- wrong-node decision ignored by local agent
-- cooldown-triggered skip
+- repair flow through `apply_config`
 
-### 5. Cross-Service Contract Tests
+### Live Azure smoke checks
 
-- `log_service` batch payload accepted by `log_router`
-- `log_router` output accepted by `analysis_agent`
-- `analysis_agent` output accepted by `decision_agent`
-- `decision_agent` output accepted by `local_agent`
-- decision plus linked analysis context accepted by `local_agent`
+Use only after a deploy:
 
-### 6. Live Azure Integration Tests
+- function apps and deployed functions are visible
+- Service Bus topics/subscriptions exist
+- Cosmos account is reachable
+- analysis settings match the expected OpenCode endpoint/model
+- token service returns a SAS payload for an authenticated node request
 
-When Azure resources are available, add a manually-triggered suite for:
+## Practical rules
 
-- Token Service HTTP request against deployed function
-- real blob upload using returned SAS
-- blob-triggered router publish to Service Bus
-- analysis message consumed and converted into decision payload
-- decision document visible in Cosmos DB
+- For ordinary code changes, run `bash scripts/test.sh`.
+- If you changed message formats or cross-service behavior, also run `bash scripts/simulate-deployment.sh`.
+- Do not make the live Azure smoke check part of every local edit loop.
 
-These should be opt-in and require explicit credentials and target environment selection.
+## Definition of done
 
-## Edge Cases Still Worth Adding Tests For
+A change is ready when:
 
-- duplicate Service Bus deliveries
-- clock skew around cooldown/expiry windows
-- empty log batches
-- oversized command output in execution results
-- malformed but partially parseable AI response
-- Cosmos transient write failures
-- Service Bus publish retries and idempotency
-- invalid Nix config produced during a repair attempt
-- repeated failed repairs on the same node
-
-## CI Strategy
-
-On every push or PR:
-
-- run `bash scripts/test.sh`
-- run simulator scenarios
-
-On manual or protected-environment workflows:
-
-- run live Azure integration suite
-
-## Definition Of Done
-
-A pipeline stage is not complete until:
-
-1. unit tests cover normal and failure cases
-2. simulator coverage proves inter-service compatibility
-3. docs describe failure behavior and operational expectations
-4. live integration coverage exists or is explicitly documented as pending
+1. the relevant package tests pass
+2. simulator coverage still matches the current pipeline
+3. any Azure-facing change has a documented manual smoke-check path
+4. future-only behavior is clearly labeled as planned

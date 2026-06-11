@@ -1,175 +1,89 @@
 # Audit Plan
 
-## Goal
+## Scope
 
-Make the proof of concept work with the minimum amount of code while improving code quality, modularity, and functional-style boundaries.
+This plan is for the current repository state, not the earlier architecture proposal. The backend pipeline, topic names, and Cosmos containers are already aligned in code and Terraform; the remaining audit work should focus on the gaps that are still open.
 
-## Principles
+## Current Baseline
 
-1. Prefer one clear contract across code, tests, and infrastructure.
-2. Prefer pure helpers with side effects pushed to the edges.
-3. Remove duplicate or alternative execution paths when one is enough.
-4. Fail loudly on critical persistence and routing errors.
-5. Keep changes small and practical for the current POC.
+- Cloud pipeline: `token_service` -> `log_service` -> `log_router` -> `analysis_agent` -> `decision_agent`
+- Service Bus topics: `analysis-input`, `analysis-results`, `final-decisions`
+- Cosmos containers already provisioned for the current POC: `observations`, `node-state-current`, `decisions`, `execution-results`, `config-snapshots`, `repair-traces`, `service-status`
+- `simulator` covers the implemented cloud-side flow and local-agent execution paths in process
+- `local_agent` already has observation building, node-state tracking, persistence workers, Service Bus wiring, and the Git-backed repair daemon/runtime; the audit should now verify its behavior, durability, and visibility
 
-## Priority 0: Contract Alignment
+## Priority 0: Verify Contract Drift
 
-### P0.1 Service Bus topic names
+Goal: confirm the repo stays aligned with the deployed contract shape.
 
-Problem:
+Check:
 
-1. Code, docs, and Terraform use different topic names.
-2. This can make the real Azure deployment behave differently from the simulator.
-
-Changes:
-
-1. Standardize on `analysis-input`, `analysis-results`, and `final-decisions`.
-2. Update Python config loaders to use the same env vars.
-3. Update Terraform topics, subscriptions, and app settings.
+1. Service Bus env vars, topic names, and subscription names still match the code, Terraform, and deployment scripts.
+2. Cosmos container names and partition-key assumptions still match the Python document shapes.
+3. Any new fallback or compatibility path is intentional and documented, not accidental drift.
 
 Success criteria:
 
-1. All services read and write the same topic names.
-2. Terraform provisions the same topology the Python services expect.
+- A fresh audit finds no mismatch between the current code, Terraform, and runtime environment variables.
 
-### P0.2 Cosmos container and document contract
-
-Problem:
-
-1. Terraform provisions too few containers.
-2. Partition key field names do not match Python document shapes.
-
-Changes:
-
-1. Provision all containers used by the current POC.
-2. Align partition key paths to current Python snake_case fields.
-3. Keep document builders minimal rather than adding translation layers unless necessary.
-
-Target containers:
-
-1. `observations`
-2. `node-state-current`
-3. `decisions`
-4. `execution-results`
-5. `config-snapshots`
-6. `repair-traces`
-7. `service-status`
-
-Success criteria:
-
-1. Current Python documents can be upserted into provisioned containers without schema mismatch.
-
-## Priority 1: Make Failures Visible
-
-### P1.1 Stop swallowing persistence failures in `local_agent`
+## Priority 1: Verify the `local_agent` Repair Loop
 
 Problem:
 
-1. The simulator can report execution success while dropping execution traces and persistence.
-2. Hidden failures reduce trust in the POC.
+- The repo already has the repair loop, but the audit should make sure its current behavior is auditable end to end.
+- Legacy direct-command behavior still exists alongside the Git-backed repair flow, so the active path needs to stay explicit and auditable.
 
-Changes:
+Audit and tighten:
 
-1. Remove silent exception swallowing from critical persistence paths.
-2. Let focused verification fail if persistence wiring is wrong.
-3. Keep optional external integrations soft only where the POC explicitly requires degraded mode.
+1. The observe -> decision -> repair -> test -> switch -> report loop.
+2. Persistence of execution results, repair traces, config snapshots, node-state records, and service-status records.
+3. Visibility of rebuild failures and persistence failures; do not allow critical failures to disappear silently.
+4. The boundary between the intended Git-backed repair path and any legacy direct-command path.
 
 Success criteria:
 
-1. Repair and execution persistence either succeeds or fails visibly.
+- A decision can be traced end to end through the repair loop without hidden failures.
+- Each attempt leaves durable before/after evidence in Cosmos DB.
 
-### P1.2 Tighten simulator expectations
+## Priority 2: Keep Simulator and Live Deployment Honest
 
 Problem:
 
-1. The simulator currently proves flow shape but not enough correctness.
+- The simulator is the fastest validation path, but it must continue to mirror the deployed contract rather than inventing its own shape.
 
-Changes:
+Audit and tighten:
 
-1. Ensure simulated repair execution persists execution results and traces.
-2. Add or update tests so missing persistence becomes a failing condition.
+1. Simulator coverage for the same topics, message types, and persistence outputs used by the current deployment.
+2. Azure smoke checks for topic existence, subscriptions, and end-to-end message flow when a live deployment is available.
+3. Validation scripts that exercise the repo’s current deployment path instead of manual one-off checks.
 
-Success criteria:
+Recommended validation:
 
-1. Simulator output includes persisted execution records when a repair runs.
+- `bash scripts/test.sh`
+- `bash scripts/simulate-deployment.sh`
+- `bash infrastructure/smoke-test-poc.sh` after an Azure deploy
 
-## Priority 2: Simplify `local_agent`
+## Future Work
 
-### P2.1 Remove the alternate direct config mutation execution path
+These items are useful, but they are not blockers for the current POC contract and should stay clearly marked as future work:
 
-Problem:
+1. Remove any remaining legacy env-var fallbacks only after no deployed config depends on them.
+2. Simplify dynamic imports or helper abstractions only if they still exist in active paths.
+3. Consider Terraform refactors such as module consolidation or `for_each` only after the current contract is stable.
+4. Add a minimal TUI or dashboard for visibility once the repair loop itself is solid.
 
-1. `local_agent` currently has two repair models.
-2. One path bypasses the intended `nixos-rebuild test` before `switch` flow.
+## Audit Output Format
 
-Changes:
+For each audit pass, record:
 
-1. Remove the direct Nix-assignment shell command path from `executor.py`.
-2. Route config-style repairs through `repair_planner.py` only.
-
-Success criteria:
-
-1. Config repairs always follow the repo-backed `test -> switch -> push` flow.
-
-### P2.2 Remove unnecessary dynamic imports and incidental complexity
-
-Problem:
-
-1. `__import__` is used where normal imports are enough.
-2. This adds noise with no POC value.
-
-Changes:
-
-1. Replace dynamic imports in `local_agent.main` and `manual_integration.py` with direct imports.
-
-Success criteria:
-
-1. The entrypoints remain functional with simpler code.
-
-## Priority 3: Infrastructure Simplification
-
-### P3.1 Reduce contract drift in Terraform
-
-Changes:
-
-1. Update `04-stateless` app settings to use the unified topic env vars.
-2. Update subscriptions to match the final topic topology.
-3. Keep the resource graph explicit and minimal.
-
-### P3.2 Optional follow-up simplification
-
-Changes:
-
-1. Consider collapsing the one-resource `01-networking` module in a later cleanup.
-2. Consider replacing repeated Function App blocks with `for_each` only after the POC contract is stable.
-
-## Priority 4: Secondary Code Cleanup
-
-Changes:
-
-1. Remove legacy env var fallbacks that preserve old topic naming.
-2. Consider simplifying `token_service.app.HttpResult` if it remains unused as an abstraction.
-3. Keep broad public-boundary exception handling only where it protects external callers intentionally.
-
-## Implementation Order
-
-1. Write this plan.
-2. Align topic names in Python and Terraform.
-3. Align Cosmos containers and document contracts.
-4. Remove silent persistence failure behavior.
-5. Simplify `local_agent` repair execution flow.
-6. Run focused simulator and CLI verification.
-
-## Verification Plan
-
-1. Run `simulate_pipeline` and confirm persisted repair data appears.
-2. Run `log_service --help`.
-3. Run `local_agent` sample mode.
-4. If toolchain availability permits, validate Terraform modules after the contract updates.
+1. What still matches the current repo and deployment shape.
+2. What drift or ambiguity remains.
+3. Which checks were run.
+4. Which items are future work only.
 
 ## Definition Of Done
 
-1. Real code and infrastructure contracts match.
-2. The simulator no longer reports false-positive success for dropped persistence.
-3. `local_agent` has one clear config-repair path.
-4. The POC remains small and working.
+- The current contract stays aligned across code, Terraform, and deployment scripts.
+- The `local_agent` repair loop is auditable end to end.
+- Simulator and live-deployment checks agree on the same topic and persistence contract.
+- Future work stays clearly separated from current POC requirements.

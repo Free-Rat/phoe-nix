@@ -136,6 +136,9 @@ fi
 LOG_SERVICE_ENV="TOKEN_SERVICE_URL=${TOKEN_SERVICE_URL}
 NODE_API_KEY=${NODE_API_KEY}"
 
+LOCAL_AGENT_GIT_SSH_COMMAND="ssh -i /var/lib/phoe-nix-secrets/local-agent-repo-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/phoe-nix/github-known_hosts"
+LOCAL_AGENT_REBUILD_COMMAND='NIX_CONFIG="experimental-features = nix-command flakes" nixos-rebuild test --flake /var/lib/phoe-nix-config-repo#simulation --impure'
+
 LOCAL_AGENT_ENV="SERVICEBUS_ENABLED=1
 SERVICEBUS_CONNECTION=${SERVICEBUS_CONNECTION}
 SERVICEBUS_TOPIC_ANALYSIS_INPUT_NAME=analysis-input
@@ -150,9 +153,14 @@ COSMOSDB_DATABASE_NAME=project-healer
 CONFIG_REPO_URL=git@github.com:Free-Rat/phoe-nix-config.git
 CONFIG_REPO_BRANCH=main
 CONFIG_REPO_PATH=/var/lib/phoe-nix-config-repo
+GIT_SSH_COMMAND='${LOCAL_AGENT_GIT_SSH_COMMAND}'
+REBUILD_TEST_COMMAND='${LOCAL_AGENT_REBUILD_COMMAND}'
+REBUILD_SWITCH_COMMAND='${LOCAL_AGENT_REBUILD_COMMAND}'
 
 OLLAMA_BASE_URL=http://10.0.2.2:11434
-OLLAMA_MODEL=gemma4:e4b
+OLLAMA_MODEL=gpt-oss:20b
+COOLDOWN_SECONDS=0
+MAX_REMEDIATIONS_PER_HOUR=100
 
 OBSERVE_INTERVAL_SECONDS=10
 REPO_REFRESH_SECONDS=300"

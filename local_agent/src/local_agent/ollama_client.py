@@ -30,6 +30,9 @@ def generate_text(*, base_url: str, model: str, prompt: str, timeout_seconds: fl
         decoded = json.loads(body)
     except json.JSONDecodeError as error:
         raise OllamaError("ollama returned invalid JSON") from error
+    error_text = decoded.get("error")
+    if isinstance(error_text, str) and error_text.strip():
+        raise OllamaError(f"ollama returned error: {error_text.strip()}")
     response_text = decoded.get("response")
     if not isinstance(response_text, str) or not response_text.strip():
         raise OllamaError("ollama response did not contain text")

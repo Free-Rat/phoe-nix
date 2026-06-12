@@ -437,6 +437,31 @@ def fetch_vm_state(args: argparse.Namespace) -> VmState:
         raise VerificationError(
             f"Expected Ollama model {args.expected_ollama_model!r} not found on VM; available: {sorted(available_models)}"
         )
+    generate_probe_payload = json.dumps(
+        {
+            "model": args.expected_ollama_model,
+            "prompt": "Return exactly OK.",
+            "stream": False,
+            "options": {"num_predict": 8},
+        }
+    )
+    generate_probe_output = ssh_command(
+        args,
+        (
+            f"curl -sS --max-time 60 -H 'Content-Type: application/json' "
+            f"-d {shlex.quote(generate_probe_payload)} {shlex.quote(ollama_base_url.rstrip('/'))}/api/generate"
+        ),
+        timeout=75,
+    )
+    generate_probe_result = json.loads(generate_probe_output)
+    if isinstance(generate_probe_result.get("error"), str) and generate_probe_result["error"].strip():
+        raise VerificationError(
+            f"Ollama model {args.expected_ollama_model!r} failed a generate probe: {generate_probe_result['error']}"
+        )
+    if not isinstance(generate_probe_result.get("response"), str):
+        raise VerificationError(
+            f"Ollama model {args.expected_ollama_model!r} returned an unexpected generate payload: {generate_probe_result}"
+        )
     print(f"PASS: Ollama reachable at {ollama_base_url} and model {args.expected_ollama_model} is available")
 
     before_revision = ssh_command(args, f"git -C {shlex.quote(repo_path)} rev-parse HEAD", timeout=15, use_sudo=True)

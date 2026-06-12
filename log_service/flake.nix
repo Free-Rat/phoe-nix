@@ -59,7 +59,7 @@
 
       # 5. Final Python package set
       pythonSet = (pythonBase.overrideScope (
-        final: prev: prev // (overlay final prev) // (buildOverlay final prev)
+        final: prev: prev // (buildOverlay final prev) // (overlay final prev)
       )).overrideScope (final: prev: {
         systemd-python = prev.systemd-python.overrideAttrs (old: {
           nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.pkg-config ];

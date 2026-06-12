@@ -3,6 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+    phoe-nix-src = {
+      url = "path:/home/freerat/projects/phoe-nix";
+      flake = false;
+    };
     pyproject-nix = {
       url = "github:pyproject-nix/pyproject.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -20,7 +24,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, pyproject-nix, uv2nix, pyproject-build-systems, ... }:
+  outputs = { self, nixpkgs, phoe-nix-src, pyproject-nix, uv2nix, pyproject-build-systems, ... }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs {
@@ -32,14 +36,14 @@
         inherit python;
       };
       workspace = uv2nix.lib.workspace.loadWorkspace {
-        workspaceRoot = ./.;
+        workspaceRoot = phoe-nix-src + "/local_agent";
       };
       overlay = workspace.mkPyprojectOverlay {
         sourcePreference = "wheel";
       };
       buildOverlay = pyproject-build-systems.overlays.wheel;
       pythonSet = (pythonBase.overrideScope (
-        final: prev: prev // (overlay final prev) // (buildOverlay final prev)
+        final: prev: prev // (buildOverlay final prev) // (overlay final prev)
       ));
     in {
       packages.${system}.default = pythonSet.mkVirtualEnv "local-agent-env" workspace.deps.default;

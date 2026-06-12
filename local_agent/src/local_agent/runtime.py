@@ -217,7 +217,7 @@ async def handle_decision(runtime: LocalAgentRuntime, decision_payload: dict[str
         )
         return {"execution_result": execution_result.model_dump(mode="json")}
 
-    if decision.action != "apply_config":
+    if decision.action not in {"apply_config", "rebuild"}:
         await _enqueue_decision_status(
             runtime,
             status="failed",

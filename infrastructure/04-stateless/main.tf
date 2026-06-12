@@ -69,6 +69,7 @@ resource "azurerm_servicebus_subscription" "local_agent" {
   name               = "local-agent"
   topic_id           = azurerm_servicebus_topic.final_decisions.id
   max_delivery_count = 5
+  lock_duration      = "PT5M"
 
   dead_lettering_on_message_expiration = true
 }

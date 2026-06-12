@@ -77,6 +77,8 @@ def build_decision(
     normalized_action = normalize_suggested_action(analysis_result.suggested_action)
     command = build_command(analysis_result)
     remediation_text = analysis_result.remediation_hint or analysis_result.analysis_text
+    if contains_nix_assignment(remediation_text) or contains_nix_assignment(analysis_result.analysis_text):
+        normalized_action = "apply_config"
     return Decision(
         decision_id=decision_id,
         node_id=analysis_result.node_id,

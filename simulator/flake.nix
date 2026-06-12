@@ -21,6 +21,7 @@
           pkgs.uv
           pkgs.pkg-config
           pkgs.systemd.dev
+          pkgs.azure-cli
         ];
 
         shellHook = ''

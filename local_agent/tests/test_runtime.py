@@ -133,6 +133,67 @@ class RuntimeTests(unittest.TestCase):
 
         self.assertEqual(result["decision_results"][0], {"status": "no_action"})
 
+    def test_run_runtime_once_treats_rebuild_without_command_as_config_repair(self) -> None:
+        persisted = []
+        decision = {
+            "decision_id": "dec-1",
+            "node_id": "node-01",
+            "analysis_id": "analysis-1",
+            "action": "rebuild",
+            "command": "",
+            "severity": "critical",
+            "confidence": 0.9,
+            "analysis_summary": "Install figlet",
+            "remediation_text": "environment.systemPackages = [ pkgs.figlet ];",
+            "idempotency_key": "abc",
+            "timestamp": "2026-01-01T00:00:00Z",
+        }
+
+        class Attempt:
+            attempt_number = 1
+            prompt = "prompt"
+            model_response = "response"
+            previous_config = "{ }"
+            proposed_config = "{ environment.systemPackages = [ pkgs.figlet ]; }"
+            test_command = "nixos-rebuild test"
+            test_result = type("Result", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+            switch_command = "nixos-rebuild switch"
+            switch_result = type("Result", (), {"returncode": 0, "stdout": "switched", "stderr": ""})()
+            push_success = True
+            push_message = "pushed"
+
+        outcome = type(
+            "Outcome",
+            (),
+            {
+                "success": True,
+                "executed_command": "nixos-rebuild test && nixos-rebuild switch",
+                "stdout": "ok",
+                "stderr": "",
+                "repo_revision_before": "rev-before",
+                "repo_revision_after": "rev-after",
+                "attempts": [Attempt()],
+                "final_config_text": "{ environment.systemPackages = [ pkgs.figlet ]; }",
+            },
+        )()
+
+        result = asyncio.run(
+            run_runtime_once(
+                config=self.build_config(),
+                decision_payloads=[decision],
+                dependencies=RuntimeDependencies(
+                    read_node_state=lambda: NodeState(failed_units=["bootstrap-banner.service"]),
+                    publish_message=lambda **kwargs: None,
+                    llm_generate=lambda prompt: prompt,
+                    execute_repair_loop_func=lambda **kwargs: outcome,
+                    persist_document=lambda **kwargs: persisted.append((kwargs["container_name"], kwargs["document"])),
+                ),
+            )
+        )
+
+        self.assertEqual(result["decision_results"][0]["repair_attempts"], 1)
+        self.assertTrue(any(container == "repair-traces" for container, _ in persisted))
+
     def test_config_repair_rejects_decision_for_another_node(self) -> None:
         decision = {
             "decision_id": "dec-1",

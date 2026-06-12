@@ -73,8 +73,20 @@ class DecisionEngineTests(unittest.TestCase):
                 analysis_text="Enable SSH by setting services.openssh.enable = true;",
             )
         )
+        self.assertEqual(decision.action, "apply_config")
         self.assertEqual(decision.command, "")
         self.assertIn("openssh", decision.remediation_text)
+
+    def test_build_decision_normalizes_rebuild_with_nix_assignment_to_apply_config(self) -> None:
+        decision = build_decision(
+            self.build_analysis(
+                suggested_action="rebuild",
+                remediation_hint="environment.systemPackages = [ pkgs.figlet ];",
+                analysis_text="Add environment.systemPackages = [ pkgs.figlet ]; and rebuild.",
+            )
+        )
+        self.assertEqual(decision.action, "apply_config")
+        self.assertEqual(decision.command, "")
 
     def test_build_decision_document_sets_cosmos_id(self) -> None:
         document = build_decision_document(build_decision(self.build_analysis()))

@@ -36,14 +36,23 @@ This is a host-side runbook for the malenia workstation. It is meant to help dep
    bash infrastructure/render-vm-env.sh --write /tmp/phoe-nix-vm-env
    ```
 
-6. Copy `log-service.env` and `local-agent.env` into the VM, then restart `log_service` and `local_agent`.
-7. Run the live Azure smoke check:
+6. Build/start the disposable VM from the **config repo**, not from this repo.
+   The VM launcher lives at:
+   `/home/freerat/projects/phoe-nix-config/run-vm.sh`
+
+   ```bash
+   cd /home/freerat/projects/phoe-nix-config
+   ./run-vm.sh
+   ```
+
+7. Copy `log-service.env` and `local-agent.env` into the VM, then restart `log_service` and `local_agent`.
+8. Run the live Azure smoke check:
 
    ```bash
    bash infrastructure/smoke-test-poc.sh --node-id nixos
    ```
 
-8. Use the live deployment checker when you want the fuller inventory:
+9. Use the live deployment checker when you want the fuller inventory:
 
    ```bash
    bash scripts/check-deployment.sh
@@ -55,6 +64,7 @@ This is a host-side runbook for the malenia workstation. It is meant to help dep
 - `scripts/check-deployment.sh` reports cloud resources, Service Bus topology, Cosmos containers, Azure Function apps, VM reachability, and rendered VM env files. Use `--quick` to skip slow checks and `--json` for machine-readable output.
 - `scripts/deploy-functions.sh` stages zip artifacts under `.build/functions/`.
 - `scripts/phase5-verify.sh` is the quickest way to confirm the local-agent decision path; it exits once `service-status` shows `decision/received`.
+- The disposable VM launch/build script is in the config repo at `/home/freerat/projects/phoe-nix-config/run-vm.sh`.
 - Keep an eye on the Ollama model setting: `local_agent` defaults to `OLLAMA_MODEL=gemma3:4b`, while `infrastructure/render-vm-env.sh` still writes `OLLAMA_MODEL=gemma4:e4b`.
 
 ## 2026-06-11 live test findings
@@ -165,6 +175,65 @@ VM/local-agent-side fixes needed during this replay:
 - mark both repos as safe for Git on the VM:
   - `/home/user/phoe-nix-config-origin.git`
   - `/var/lib/phoe-nix-config-repo`
+- move the VM rebuild target to the flake `#simulation` config and enable a
+  writable VM store overlay on disk (`virtualisation.writableStore = true;`
+  and `virtualisation.writableStoreUseTmpfs = false;`) so guest rebuilds do
+  not fail on the default tiny tmpfs-backed `/nix/store`
+- repoint the guest repo from the guest-local bare origin to the real GitHub
+  repo and install a deploy key at
+  `/var/lib/phoe-nix-secrets/local-agent-repo-key`
+
+### Automating guest GitHub deploy-key setup
+
+Run this on `malenia` when the VM is up and you want the guest repo to fetch
+and push against `git@github.com:Free-Rat/phoe-nix-config.git`.
+
+```bash
+cat > /tmp/setup-vm-git-auth.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${DEPLOY_KEY_PATH:?set DEPLOY_KEY_PATH to the private deploy key on malenia}"
+REMOTE_USERHOST="${REMOTE_USERHOST:-user@localhost}"
+REMOTE_PORT="${REMOTE_PORT:-2222}"
+
+scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P "$REMOTE_PORT" \
+  "$DEPLOY_KEY_PATH" "${REMOTE_USERHOST}:/tmp/local-agent-repo-key"
+
+ssh -tt -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$REMOTE_PORT" "$REMOTE_USERHOST" \
+  'printf "user\n" | sudo -S bash -s' <<'REMOTE'
+set -euo pipefail
+
+install -d -m 0700 /var/lib/phoe-nix-secrets
+install -m 0600 /tmp/local-agent-repo-key /var/lib/phoe-nix-secrets/local-agent-repo-key
+rm -f /tmp/local-agent-repo-key
+
+cd /var/lib/phoe-nix-config-repo
+git remote set-url origin git@github.com:Free-Rat/phoe-nix-config.git
+git config --local core.sshCommand 'ssh -i /var/lib/phoe-nix-secrets/local-agent-repo-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/phoe-nix/github-known_hosts'
+GIT_SSH_COMMAND='ssh -i /var/lib/phoe-nix-secrets/local-agent-repo-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/phoe-nix/github-known_hosts' git fetch origin main
+git reset --hard origin/main
+git clean -fd
+
+systemctl restart local_agent log_service
+REMOTE
+EOF
+
+chmod +x /tmp/setup-vm-git-auth.sh
+DEPLOY_KEY_PATH=/path/to/private_deploy_key /tmp/setup-vm-git-auth.sh
+```
+
+Quick verification:
+
+```bash
+ssh -tt -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 user@localhost '
+  printf "user\n" | sudo -S bash -lc "
+    cd /var/lib/phoe-nix-config-repo &&
+    git remote -v &&
+    git rev-parse --short HEAD
+  "
+'
+```
 
 Final observed result:
 

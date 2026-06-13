@@ -38,7 +38,10 @@ The simulator is the best repo-level way to validate the current pipeline withou
 ```bash
 bash scripts/test.sh
 bash scripts/simulate-deployment.sh
+bash scripts/run-live-azure-vm-e2e.sh
 ```
+
+`run-live-azure-vm-e2e.sh` runs the Python implementation in a repo-managed environment. It is a real Azure + real VM operator check and intentionally mutating: it can drive `local_agent` to edit `configuration.nix`, rebuild, and push a real repo change.
 
 ## Related docs
 

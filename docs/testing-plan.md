@@ -9,6 +9,7 @@ Phoe-nix currently has a structured cloud-side pipeline, a node-side `local_agen
 - `bash scripts/test.sh` — main repo test command. It runs unittest discovery for each service package that has a `tests/` directory (`token_service`, `log_service`, `log_router`, `analysis_agent`, `decision_agent`, `local_agent`, `simulator`). `schemas/` does not have a standalone test suite today.
 - `bash scripts/simulate-deployment.sh` — in-process end-to-end exercise of the current pipeline. Use this when changing message shapes, routing, analysis/decision flow, or `local_agent` repair behavior.
 - `bash infrastructure/smoke-test-poc.sh --node-id nixos` — optional live Azure smoke check after deployment. It requires Azure CLI, deployed resources, and `NODE_API_KEY` / `TF_VAR_node_api_key`.
+- `bash scripts/run-live-azure-vm-e2e.sh` — full live POC check for the real blob -> router -> analysis(OpenCode) -> decision -> VM `local_agent` repair path. This is a mutating operator script: it can change the VM config repo and push a real commit.
 
 ## What to cover in tests
 
@@ -47,6 +48,7 @@ Use only after a deploy:
 - Cosmos account is reachable
 - analysis settings match the expected OpenCode endpoint/model
 - token service returns a SAS payload for an authenticated node request
+- for the full POC path, `bash scripts/run-live-azure-vm-e2e.sh` can also watch the matching `analysis-input`, `analysis-results`, `final-decisions`, Cosmos `service-status`, `execution-results`, and the VM repo revision
 
 ## Practical rules
 

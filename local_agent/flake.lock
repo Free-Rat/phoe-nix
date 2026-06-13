@@ -32,6 +32,19 @@
         "type": "github"
       }
     },
+    "phoe-nix-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1781273291,
+        "narHash": "sha256-9obr/CAHI8CZKGuaGbD1jSVYZgoktyNkdiG2tTPTP7s=",
+        "path": "/home/freerat/projects/phoe-nix",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/freerat/projects/phoe-nix",
+        "type": "path"
+      }
+    },
     "pyproject-build-systems": {
       "inputs": {
         "nixpkgs": "nixpkgs_2",
@@ -77,6 +90,7 @@
     "root": {
       "inputs": {
         "nixpkgs": "nixpkgs",
+        "phoe-nix-src": "phoe-nix-src",
         "pyproject-build-systems": "pyproject-build-systems",
         "pyproject-nix": "pyproject-nix",
         "uv2nix": "uv2nix_2"

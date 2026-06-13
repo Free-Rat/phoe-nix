@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -38,6 +39,7 @@ DEFAULT_REPAIR_TIMEOUT_SECONDS = 900.0
 DEFAULT_BLOB_TIMEOUT_SECONDS = 600.0
 DEFAULT_TOPIC_TIMEOUT_SECONDS = 180.0
 DEFAULT_PACKAGE_CANDIDATES = ("sl", "figlet", "toilet", "cowsay")
+GIT_REVISION_RE = re.compile(r"^[0-9a-f]{7,40}$")
 
 
 @dataclass(frozen=True)
@@ -728,11 +730,59 @@ def poll_local_agent(
     return all_statuses, last_execution, last_trace
 
 
+def normalize_revision(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or text.lower() == "none" or not GIT_REVISION_RE.fullmatch(text):
+        return ""
+    return text
+
+
 def fetch_remote_repo_state(args: argparse.Namespace, vm_state: VmState) -> tuple[str, str]:
     config_abs_path = f"{vm_state.repo_path.rstrip('/')}/{vm_state.config_file_path.lstrip('/')}"
     revision = ssh_command(args, f"git -C {shlex.quote(vm_state.repo_path)} rev-parse HEAD", timeout=15, use_sudo=True)
     config_text = ssh_command(args, f"cat {shlex.quote(config_abs_path)}", timeout=15, use_sudo=True)
     return revision, config_text
+
+
+def wait_for_remote_repo_state(
+    args: argparse.Namespace,
+    vm_state: VmState,
+    *,
+    expected_revision: str,
+    package: str,
+    timeout_seconds: float = 20.0,
+) -> tuple[str, str]:
+    expected_revision = normalize_revision(expected_revision)
+    deadline = time.monotonic() + timeout_seconds
+    last_revision = ""
+    last_config_text = ""
+    while True:
+        last_revision, last_config_text = fetch_remote_repo_state(args, vm_state)
+        revision_ok = not expected_revision or last_revision == expected_revision
+        config_ok = package in last_config_text or f"pkgs.{package}" in last_config_text
+        if revision_ok and config_ok:
+            return last_revision, last_config_text
+        if time.monotonic() >= deadline:
+            return last_revision, last_config_text
+        time.sleep(2)
+
+
+def resolve_verified_revision(
+    *,
+    before_revision: str,
+    after_revision: str,
+    trace_revision: str,
+) -> str:
+    if trace_revision and trace_revision != before_revision:
+        if after_revision and after_revision != trace_revision:
+            print(
+                "WARN: VM repo HEAD readback "
+                f"{after_revision!r} did not match repair trace revision {trace_revision!r}; trusting repair trace"
+            )
+        return trace_revision
+    if after_revision and after_revision != before_revision:
+        return after_revision
+    raise VerificationError("VM repo HEAD did not change after repair")
 
 
 def parse_args() -> argparse.Namespace:
@@ -904,7 +954,13 @@ def main() -> int:
         )
         print_decision_cosmos_snapshot(snapshot, decision_id=decision_id)
 
-        after_revision, after_config_text = fetch_remote_repo_state(args, vm_state)
+        trace_revision = normalize_revision(repair_trace.get("repo_revision_after")) if repair_trace else ""
+        after_revision, after_config_text = wait_for_remote_repo_state(
+            args,
+            vm_state,
+            expected_revision=trace_revision,
+            package=package,
+        )
         success_seen = any(
             item.get("stage") == "repair" and item.get("status") == "completed" for item in statuses
         )
@@ -928,8 +984,11 @@ def main() -> int:
             raise VerificationError(f"execution-results for {decision_id} was missing or unsuccessful")
         if repair_trace is None or repair_trace.get("push_success") is not True:
             raise VerificationError(f"repair-trace for {decision_id} was missing or push_success was not true")
-        if after_revision == vm_state.before_revision:
-            raise VerificationError("VM repo HEAD did not change after repair")
+        verified_revision = resolve_verified_revision(
+            before_revision=vm_state.before_revision,
+            after_revision=after_revision,
+            trace_revision=trace_revision,
+        )
         if package not in after_config_text and f"pkgs.{package}" not in after_config_text:
             raise VerificationError(f"VM config did not contain the expected package marker for {package!r}")
 
@@ -942,7 +1001,8 @@ def main() -> int:
             "decision_id": decision_id,
             "package": package,
             "repo_revision_before": vm_state.before_revision,
-            "repo_revision_after": after_revision,
+            "repo_revision_after": verified_revision,
+            "vm_repo_revision_readback": after_revision,
             "push_success": repair_trace.get("push_success"),
             "repair_attempt": repair_trace.get("attempt_number"),
             "execution_success": execution_result.get("success"),

@@ -27,7 +27,7 @@ from analysis_agent.message_handler import analyze_message
 DEFAULT_PROJECT_NAME = "project-healer"
 DEFAULT_ENV = "dev"
 DEFAULT_NODE_ID = "nixos"
-DEFAULT_MODEL = "gemma4:12b"
+DEFAULT_MODEL = "gpt-oss:20b"
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 
 
